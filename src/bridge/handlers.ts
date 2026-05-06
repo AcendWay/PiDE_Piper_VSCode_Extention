@@ -131,9 +131,7 @@ async function getEditorState(
 function getStatus(state: BridgeState): unknown {
 	const active = vscode.window.activeTextEditor;
 	const diagnostics = active
-		? getDiagnosticSummary(
-				vscode.languages.getDiagnostics(active.document.uri),
-			)
+		? getDiagnosticSummary(vscode.languages.getDiagnostics(active.document.uri))
 		: { errors: 0, warnings: 0, infos: 0, hints: 0 };
 
 	return {
@@ -141,9 +139,7 @@ function getStatus(state: BridgeState): unknown {
 			vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [],
 		activeEditor: active
 			? {
-					filePath: vscode.workspace.asRelativePath(
-						active.document.uri,
-					),
+					filePath: vscode.workspace.asRelativePath(active.document.uri),
 					languageId: active.document.languageId,
 					cursor: [
 						active.selection.active.line + 1,
@@ -204,8 +200,7 @@ async function showDiff(
 		"vscode.diff",
 		left,
 		file,
-		payload.title ??
-			`${vscode.workspace.asRelativePath(file)} ↔ HEAD`,
+		payload.title ?? `${vscode.workspace.asRelativePath(file)} ↔ HEAD`,
 	);
 	return `Opened diff for ${vscode.workspace.asRelativePath(file)}`;
 }
@@ -234,21 +229,21 @@ function resolveUri(
 	if (/^[a-z][a-z0-9+.-]*:/i.test(input)) return vscode.Uri.parse(input);
 	if (path.isAbsolute(input)) return vscode.Uri.file(input);
 	const folder =
-		vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ??
-		context.extensionPath;
+		vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? context.extensionPath;
 	return vscode.Uri.file(path.join(folder, input));
 }
 
-function getDiagnosticSummary(
-	diagnostics: readonly vscode.Diagnostic[],
-): { errors: number; warnings: number; infos: number; hints: number } {
+function getDiagnosticSummary(diagnostics: readonly vscode.Diagnostic[]): {
+	errors: number;
+	warnings: number;
+	infos: number;
+	hints: number;
+} {
 	const s = { errors: 0, warnings: 0, infos: 0, hints: 0 };
 	for (const d of diagnostics) {
 		if (d.severity === vscode.DiagnosticSeverity.Error) s.errors++;
-		else if (d.severity === vscode.DiagnosticSeverity.Warning)
-			s.warnings++;
-		else if (d.severity === vscode.DiagnosticSeverity.Information)
-			s.infos++;
+		else if (d.severity === vscode.DiagnosticSeverity.Warning) s.warnings++;
+		else if (d.severity === vscode.DiagnosticSeverity.Information) s.infos++;
 		else s.hints++;
 	}
 	return s;
@@ -267,9 +262,5 @@ async function gitSummary(): Promise<string> {
 		uri: vscode.workspace.asRelativePath(c.uri),
 		status: c.status,
 	}));
-	return JSON.stringify(
-		{ branch: repo.state.HEAD?.name, changes },
-		null,
-		2,
-	);
+	return JSON.stringify({ branch: repo.state.HEAD?.name, changes }, null, 2);
 }

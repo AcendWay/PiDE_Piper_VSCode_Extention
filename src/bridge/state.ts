@@ -32,10 +32,7 @@ export function createBridgeState(
 	};
 }
 
-export function pushNotification(
-	state: BridgeState,
-	event: BridgeEvent,
-): void {
+export function pushNotification(state: BridgeState, event: BridgeEvent): void {
 	state.notifications.push(event);
 	if (state.notifications.length > MAX_NOTIFICATIONS) {
 		state.notifications.shift();

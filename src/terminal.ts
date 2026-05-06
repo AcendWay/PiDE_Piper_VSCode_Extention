@@ -1,6 +1,12 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { buildPiArgs, buildPiEnv, ensurePiBinary, IS_WIN, winToWslPath } from "./pi";
+import {
+	buildPiArgs,
+	buildPiEnv,
+	ensurePiBinary,
+	IS_WIN,
+	winToWslPath,
+} from "./pi";
 
 export const TERMINAL_NAME = "Pi Agent";
 
@@ -69,7 +75,9 @@ export async function createPiTerminal(
 		options.model ?? (cfg.get<string>("defaultModel", "") || undefined);
 
 	// Build pi args (WSL-aware path conversion happens inside if IS_WIN)
-	const bridgeExtPath = IS_WIN ? winToWslPath(bridgeExtNative) : bridgeExtNative;
+	const bridgeExtPath = IS_WIN
+		? winToWslPath(bridgeExtNative)
+		: bridgeExtNative;
 	const piArgs = buildPiArgs({
 		bridgeExtensionPath: bridgeExtPath,
 		model,
@@ -79,10 +87,7 @@ export async function createPiTerminal(
 
 	// Inject context lines as a one-shot system prompt addition
 	if (options.contextLines?.length) {
-		piArgs.push(
-			"--append-system-prompt",
-			options.contextLines.join("\n\n"),
-		);
+		piArgs.push("--append-system-prompt", options.contextLines.join("\n\n"));
 	}
 
 	const env = buildPiEnv(bridgeConfig);
@@ -103,7 +108,9 @@ export async function createPiTerminal(
 		cwd = workspaceRoot;
 	}
 
-	const location = resolveTerminalLocation(cfg.get<string>("terminalLocation", "beside"));
+	const location = resolveTerminalLocation(
+		cfg.get<string>("terminalLocation", "beside"),
+	);
 
 	const terminal = vscode.window.createTerminal({
 		name: TERMINAL_NAME,
@@ -185,7 +192,10 @@ export function buildFileContextLines(): string[] {
 
 function resolveTerminalLocation(
 	setting: string,
-): vscode.TerminalEditorLocationOptions | vscode.TerminalSplitLocationOptions | undefined {
+):
+	| vscode.TerminalEditorLocationOptions
+	| vscode.TerminalSplitLocationOptions
+	| undefined {
 	switch (setting) {
 		case "panel":
 			return undefined; // default VS Code behaviour = bottom panel

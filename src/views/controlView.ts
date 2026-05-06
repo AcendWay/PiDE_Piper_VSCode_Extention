@@ -25,38 +25,27 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 		this.terminalRunning = !!findPiTerminal();
 		view.webview.html = this.html();
 
-		view.webview.onDidReceiveMessage(
-			async (msg: { type: string }) => {
-				switch (msg.type) {
-					case "open":
-						await focusOrCreateTerminal(
-							this.bridge,
-							this.context.extensionUri,
-						);
-						this.notifyTerminalState(true);
-						break;
-					case "restart":
-						await vscode.commands.executeCommand("piSidebar.restart");
-						break;
-					case "sendContext":
-						await vscode.commands.executeCommand(
-							"piSidebar.sendSelection",
-						);
-						break;
-					case "reviewDiffs":
-						await vscode.commands.executeCommand(
-							"piSidebar.reviewDiffs",
-						);
-						break;
-					case "newSession":
-						await vscode.commands.executeCommand(
-							"piSidebar.newSession",
-						);
-						this.notifyTerminalState(true);
-						break;
-				}
-			},
-		);
+		view.webview.onDidReceiveMessage(async (msg: { type: string }) => {
+			switch (msg.type) {
+				case "open":
+					await focusOrCreateTerminal(this.bridge, this.context.extensionUri);
+					this.notifyTerminalState(true);
+					break;
+				case "restart":
+					await vscode.commands.executeCommand("piSidebar.restart");
+					break;
+				case "sendContext":
+					await vscode.commands.executeCommand("piSidebar.sendSelection");
+					break;
+				case "reviewDiffs":
+					await vscode.commands.executeCommand("piSidebar.reviewDiffs");
+					break;
+				case "newSession":
+					await vscode.commands.executeCommand("piSidebar.newSession");
+					this.notifyTerminalState(true);
+					break;
+			}
+		});
 	}
 
 	/** Called by extension when terminal opens or closes. */

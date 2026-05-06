@@ -63,34 +63,31 @@ export async function activate(
 
 	// ── Terminal profile ─────────────────────────────────────────────────────
 	context.subscriptions.push(
-		vscode.window.registerTerminalProfileProvider(
-			"piSidebar.terminalProfile",
-			{
-				provideTerminalProfile() {
-					if (!bridge) return undefined;
-					return new vscode.TerminalProfile({
-						name: "Pi Agent",
-						shellPath: "pi",
-						env: {
-							PI_VSCODE_BRIDGE_URL: bridge.url,
-							PI_VSCODE_BRIDGE_TOKEN: bridge.token,
-						},
-						iconPath: {
-							light: vscode.Uri.joinPath(
-								context.extensionUri,
-								"media",
-								"pi-logo-light.svg",
-							),
-							dark: vscode.Uri.joinPath(
-								context.extensionUri,
-								"media",
-								"pi-logo-dark.svg",
-							),
-						},
-					});
-				},
+		vscode.window.registerTerminalProfileProvider("piSidebar.terminalProfile", {
+			provideTerminalProfile() {
+				if (!bridge) return undefined;
+				return new vscode.TerminalProfile({
+					name: "Pi Agent",
+					shellPath: "pi",
+					env: {
+						PI_VSCODE_BRIDGE_URL: bridge.url,
+						PI_VSCODE_BRIDGE_TOKEN: bridge.token,
+					},
+					iconPath: {
+						light: vscode.Uri.joinPath(
+							context.extensionUri,
+							"media",
+							"pi-logo-light.svg",
+						),
+						dark: vscode.Uri.joinPath(
+							context.extensionUri,
+							"media",
+							"pi-logo-dark.svg",
+						),
+					},
+				});
 			},
-		),
+		}),
 	);
 
 	// ── Commands ─────────────────────────────────────────────────────────────
@@ -153,10 +150,9 @@ export async function activate(
 		vscode.commands.registerCommand("piSidebar.selectModel", async () => {
 			// Delegated to the control view's model picker (Phase 2, #7)
 			// For now, show a quick pick with common models
-			const model = await vscode.window.showQuickPick(
-				commonModels(),
-				{ placeHolder: "Select a model for Pi" },
-			);
+			const model = await vscode.window.showQuickPick(commonModels(), {
+				placeHolder: "Select a model for Pi",
+			});
 			if (!model || !bridge) return;
 			const cfg = vscode.workspace.getConfiguration("piSidebar");
 			await cfg.update(
@@ -209,9 +205,7 @@ export async function deactivate(): Promise<void> {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 async function revealSidebar(): Promise<void> {
-	await vscode.commands.executeCommand(
-		"workbench.view.extension.piSidebar",
-	);
+	await vscode.commands.executeCommand("workbench.view.extension.piSidebar");
 }
 
 function commonModels(): string[] {

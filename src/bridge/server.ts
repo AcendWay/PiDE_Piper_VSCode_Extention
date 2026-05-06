@@ -23,8 +23,7 @@ export async function createBridge(
 	onTerminalSession: (terminalId: string, sessionFile: string) => void,
 ): Promise<Bridge> {
 	const token = crypto.randomBytes(24).toString("hex");
-	const bindHost =
-		process.platform === "win32" ? "0.0.0.0" : "127.0.0.1";
+	const bindHost = process.platform === "win32" ? "0.0.0.0" : "127.0.0.1";
 
 	const state = createBridgeState(onTerminalSession);
 
@@ -71,8 +70,7 @@ export async function createBridge(
 					res.writeHead(200, { "Content-Type": "application/json" });
 					res.end(JSON.stringify(r));
 				} catch (err: unknown) {
-					const msg =
-						err instanceof Error ? err.message : String(err);
+					const msg = err instanceof Error ? err.message : String(err);
 					const r: BridgeResponse = { ok: false, error: msg };
 					res.writeHead(200, { "Content-Type": "application/json" });
 					res.end(JSON.stringify(r));
@@ -93,8 +91,7 @@ export async function createBridge(
 		server.on("error", reject);
 	});
 
-	const listenHost =
-		process.platform === "win32" ? "127.0.0.1" : "127.0.0.1";
+	const listenHost = process.platform === "win32" ? "127.0.0.1" : "127.0.0.1";
 	const url = `http://${listenHost}:${port}`;
 
 	return {

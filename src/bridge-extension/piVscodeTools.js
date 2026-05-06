@@ -10,8 +10,6 @@
  *   PI_VSCODE_BRIDGE_TOKEN 48-char hex security token
  */
 
-
-
 const http = require("node:http");
 const https = require("node:https");
 const { Type } = require("typebox");
@@ -36,7 +34,11 @@ function callVsCode(action, payload) {
 		const req = lib.request(
 			{
 				hostname: url.hostname,
-				port: url.port ? Number(url.port) : (url.protocol === "https:" ? 443 : 80),
+				port: url.port
+					? Number(url.port)
+					: url.protocol === "https:"
+						? 443
+						: 80,
 				path: url.pathname,
 				method: "POST",
 				headers: {
@@ -47,7 +49,9 @@ function callVsCode(action, payload) {
 			},
 			(res) => {
 				let data = "";
-				res.on("data", (chunk) => { data += chunk; });
+				res.on("data", (chunk) => {
+					data += chunk;
+				});
 				res.on("end", () => {
 					try {
 						const msg = JSON.parse(data);
@@ -99,7 +103,8 @@ function startFooterPolling(pi) {
 			const status = typeof raw === "string" ? JSON.parse(raw) : raw;
 			if (!status?.activeEditor) return;
 
-			const { filePath, languageId, cursor, isDirty, diagnostics } = status.activeEditor;
+			const { filePath, languageId, cursor, isDirty, diagnostics } =
+				status.activeEditor;
 			const diag = diagnostics ?? {};
 			const errors = diag.errors ? ` ✗${diag.errors}` : "";
 			const warns = diag.warnings ? ` ⚠${diag.warnings}` : "";
@@ -146,8 +151,7 @@ module.exports = (pi) => {
 	pi.registerTool({
 		name: "vscode_open_file",
 		label: "VS Code Open File",
-		description:
-			"Open a file in VS Code, optionally at a 1-based line/column.",
+		description: "Open a file in VS Code, optionally at a 1-based line/column.",
 		parameters: Type.Object({
 			path: Type.String({
 				description: "Workspace-relative or absolute file path",
@@ -167,10 +171,16 @@ module.exports = (pi) => {
 			"Open VS Code diff viewer for a file against HEAD, or between two explicit paths.",
 		parameters: Type.Object({
 			path: Type.Optional(
-				Type.String({ description: "Workspace-relative path to diff against HEAD" }),
+				Type.String({
+					description: "Workspace-relative path to diff against HEAD",
+				}),
 			),
-			left: Type.Optional(Type.String({ description: "Left file URI or path" })),
-			right: Type.Optional(Type.String({ description: "Right file URI or path" })),
+			left: Type.Optional(
+				Type.String({ description: "Left file URI or path" }),
+			),
+			right: Type.Optional(
+				Type.String({ description: "Right file URI or path" }),
+			),
 			title: Type.Optional(Type.String()),
 		}),
 		async execute(_id, params) {
@@ -242,9 +252,7 @@ module.exports = (pi) => {
 			total: Type.Number({ description: "Total context window size" }),
 		}),
 		async execute(_id, params) {
-			return textResult(
-				await callVsCode("reportContextUsage", params),
-			);
+			return textResult(await callVsCode("reportContextUsage", params));
 		},
 	});
 };
