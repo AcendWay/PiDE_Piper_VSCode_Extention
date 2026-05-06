@@ -1,0 +1,129 @@
+{
+  "name": "pi-vscode-sidebar",
+  "displayName": "Pi Sidebar",
+  "description": "Run the Pi coding agent TUI inside a VS Code sidebar with project and editor awareness.",
+  "version": "0.0.1",
+  "private": false,
+  "publisher": "local",
+  "extensionKind": ["workspace", "ui"],
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:piSidebar.session",
+    "onCommand:piSidebar.open",
+    "onCommand:piSidebar.restart",
+    "onCommand:piSidebar.sendSelection",
+    "onCommand:piSidebar.reviewDiffs"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "piSidebar",
+          "title": "Pi",
+          "icon": "media/pi.svg"
+        }
+      ]
+    },
+    "views": {
+      "piSidebar": [
+        {
+          "type": "webview",
+          "id": "piSidebar.session",
+          "name": "Pi Agent"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "piSidebar.open",
+        "title": "Pi: Focus Sidebar",
+        "icon": {
+          "light": "media/pi-logo-light.svg",
+          "dark": "media/pi-logo-dark.svg"
+        }
+      },
+      {
+        "command": "piSidebar.restart",
+        "title": "Pi: Restart Agent"
+      },
+      {
+        "command": "piSidebar.sendSelection",
+        "title": "Pi: Send Active File/Selection Context"
+      },
+      {
+        "command": "piSidebar.reviewDiffs",
+        "title": "Pi: Review Git Diffs"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "piSidebar.open",
+          "group": "navigation",
+          "when": "true"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Pi Sidebar",
+      "properties": {
+        "piSidebar.piExecutable": {
+          "type": "string",
+          "default": "pi",
+          "description": "Pi executable path or command."
+        },
+        "piSidebar.startupArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra args passed to pi before the initial prompt. Example: [\"--model\", \"sonnet:high\"]"
+        },
+        "piSidebar.initialPrompt": {
+          "type": "string",
+          "default": "You are running inside VS Code via the Pi Sidebar extension. Use available VS Code tools when editor state, diagnostics, diffs, or commands help. Be project and file aware.",
+          "description": "Initial prompt sent when a new Pi TUI starts."
+        },
+        "piSidebar.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start Pi when the sidebar view opens."
+        },
+        "piSidebar.showOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically reveal the Pi sidebar in the Extension Development Host. Useful for local testing."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "typecheck": "tsc --noEmit -p ./",
+    "rebuild-pty": "VSCODE_NODE=$(ls ~/.vscode-server/bin/*/node | sort | tail -1) && VSCODE_VER=$($VSCODE_NODE -e 'process.stdout.write(process.versions.node)') && NODEDIR=~/.cache/node-gyp/$VSCODE_VER && PYTHON=/usr/bin/python3.12 $VSCODE_NODE ./node_modules/.bin/node-gyp rebuild --target=$VSCODE_VER --nodedir=$NODEDIR --directory node_modules/node-pty",
+    "package": "npm run compile && npx @vscode/vsce package --allow-missing-repository --no-git-tag-version",
+    "package-install": "npm run package && code --install-extension pi-vscode-sidebar-0.0.1.vsix"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "node-pty": "^1.0.0",
+    "typebox": "^1.0.58"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.19",
+    "@types/vscode": "^1.92.0",
+    "node-gyp": "^12.3.0",
+    "typescript": "^5.7.3"
+  }
+}
