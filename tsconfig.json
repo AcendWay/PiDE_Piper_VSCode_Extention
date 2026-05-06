@@ -12,6 +12,6 @@
     "moduleResolution": "node",
     "types": ["node", "vscode"]
   },
-  "include": ["src/extension.ts"],
-  "exclude": ["src/piVscodeTools.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/bridge-extension/**", "node_modules", "dist"]
 }

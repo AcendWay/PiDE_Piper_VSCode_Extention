@@ -1,25 +1,16 @@
 {
   "name": "pi-vscode-sidebar",
   "displayName": "Pi Sidebar",
-  "description": "Run the Pi coding agent TUI inside a VS Code sidebar with project and editor awareness.",
-  "version": "0.0.1",
+  "description": "Run the Pi coding agent as a native VS Code terminal with sidebar management: model selector, context indicator, session history, and package marketplace.",
+  "version": "0.1.0",
   "private": false,
   "publisher": "local",
   "extensionKind": ["workspace", "ui"],
   "engines": {
     "vscode": "^1.92.0"
   },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "onStartupFinished",
-    "onView:piSidebar.session",
-    "onCommand:piSidebar.open",
-    "onCommand:piSidebar.restart",
-    "onCommand:piSidebar.sendSelection",
-    "onCommand:piSidebar.reviewDiffs"
-  ],
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -35,15 +26,33 @@
       "piSidebar": [
         {
           "type": "webview",
-          "id": "piSidebar.session",
+          "id": "piSidebar.control",
           "name": "Pi Agent"
+        },
+        {
+          "type": "webview",
+          "id": "piSidebar.sessions",
+          "name": "Sessions"
+        },
+        {
+          "type": "webview",
+          "id": "piSidebar.packages",
+          "name": "Packages"
         }
       ]
     },
     "commands": [
       {
         "command": "piSidebar.open",
-        "title": "Pi: Focus Sidebar",
+        "title": "Pi: Open Terminal",
+        "icon": {
+          "light": "media/pi-logo-light.svg",
+          "dark": "media/pi-logo-dark.svg"
+        }
+      },
+      {
+        "command": "piSidebar.openWithFile",
+        "title": "Pi: Open with File Context",
         "icon": {
           "light": "media/pi-logo-light.svg",
           "dark": "media/pi-logo-dark.svg"
@@ -51,7 +60,7 @@
       },
       {
         "command": "piSidebar.restart",
-        "title": "Pi: Restart Agent"
+        "title": "Pi: Restart Terminal"
       },
       {
         "command": "piSidebar.sendSelection",
@@ -60,47 +69,81 @@
       {
         "command": "piSidebar.reviewDiffs",
         "title": "Pi: Review Git Diffs"
+      },
+      {
+        "command": "piSidebar.selectModel",
+        "title": "Pi: Select Model"
+      },
+      {
+        "command": "piSidebar.newSession",
+        "title": "Pi: New Session"
+      },
+      {
+        "command": "piSidebar.upgrade",
+        "title": "Pi: Upgrade Pi and Packages"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "piSidebar.open",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p"
       }
     ],
     "menus": {
       "editor/title": [
         {
-          "command": "piSidebar.open",
+          "command": "piSidebar.openWithFile",
           "group": "navigation",
           "when": "true"
         }
       ]
     },
+    "terminal/profiles": [
+      {
+        "id": "piSidebar.terminalProfile",
+        "title": "Pi Agent"
+      }
+    ],
     "configuration": {
       "title": "Pi Sidebar",
       "properties": {
         "piSidebar.piExecutable": {
           "type": "string",
-          "default": "pi",
-          "description": "Pi executable path or command."
+          "default": "",
+          "description": "Absolute path to the pi binary. Leave empty for auto-detection from common install locations."
+        },
+        "piSidebar.terminalLocation": {
+          "type": "string",
+          "enum": ["beside", "panel", "active"],
+          "default": "beside",
+          "description": "Where to open the Pi terminal: beside the editor, in the bottom panel, or in the active editor group."
         },
         "piSidebar.startupArgs": {
           "type": "array",
-          "items": {
-            "type": "string"
-          },
+          "items": { "type": "string" },
           "default": [],
-          "description": "Extra args passed to pi before the initial prompt. Example: [\"--model\", \"sonnet:high\"]"
+          "description": "Extra arguments passed to pi on startup. Example: [\"--model\", \"claude-sonnet-4\"]"
         },
         "piSidebar.initialPrompt": {
           "type": "string",
           "default": "You are running inside VS Code via the Pi Sidebar extension. Use available VS Code tools when editor state, diagnostics, diffs, or commands help. Be project and file aware.",
-          "description": "Initial prompt sent when a new Pi TUI starts."
+          "description": "System prompt prefix injected when a Pi session starts."
         },
-        "piSidebar.autoStart": {
+        "piSidebar.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "Default model to use when opening Pi. Example: claude-sonnet-4"
+        },
+        "piSidebar.restoreSessions": {
           "type": "boolean",
           "default": true,
-          "description": "Start Pi when the sidebar view opens."
+          "description": "Automatically restore Pi sessions when VS Code reloads."
         },
         "piSidebar.showOnStartup": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically reveal the Pi sidebar in the Extension Development Host. Useful for local testing."
+          "description": "Reveal the Pi sidebar when VS Code starts."
         }
       }
     }
@@ -110,14 +153,10 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "typecheck": "tsc --noEmit -p ./",
-    "rebuild-pty": "VSCODE_NODE=$(ls ~/.vscode-server/bin/*/node | sort | tail -1) && VSCODE_VER=$($VSCODE_NODE -e 'process.stdout.write(process.versions.node)') && NODEDIR=~/.cache/node-gyp/$VSCODE_VER && PYTHON=/usr/bin/python3.12 $VSCODE_NODE ./node_modules/.bin/node-gyp rebuild --target=$VSCODE_VER --nodedir=$NODEDIR --directory node_modules/node-pty",
     "package": "npm run compile && npx @vscode/vsce package --allow-missing-repository --no-git-tag-version",
-    "package-install": "npm run package && code --install-extension pi-vscode-sidebar-0.0.1.vsix"
+    "package-install": "npm run package && code --install-extension pi-vscode-sidebar-0.1.0.vsix"
   },
   "dependencies": {
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/xterm": "^5.5.0",
-    "node-pty": "^1.0.0",
     "typebox": "^1.0.58"
   },
   "devDependencies": {
