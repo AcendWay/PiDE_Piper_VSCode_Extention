@@ -1,16 +1,17 @@
 <div align="center">
 
-<img src="media/pi-logo-color.svg" width="96" height="96" alt="Pi Logo" />
+<img src="media/PiDE_Piper_Logo.png" width="128" height="128" alt="PiDE Piper Logo" />
 
 # PiDE Piper — Pi Agent for VS Code
 
 **Your AI coding agent, deeply wired into the editor.**
 
-[![Version](https://img.shields.io/badge/version-0.3.2-6366f1?style=flat-square&logo=visualstudiocode)](https://github.com/AcendWay/PiDE_Piper_VSCode_Extention/releases)
+[![Version](https://img.shields.io/badge/version-0.3.3-6366f1?style=flat-square&logo=visualstudiocode)](https://github.com/AcendWay/PiDE_Piper_VSCode_Extention/releases)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.92+-007ACC?style=flat-square&logo=visualstudiocode)](https://code.visualstudio.com)
 [![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
 [![Pi Agent](https://img.shields.io/badge/powered%20by-pi%20coding%20agent-f97316?style=flat-square)](https://github.com/mariozechner/pi-coding-agent)
 [![Open Source](https://img.shields.io/badge/open%20source-❤-ec4899?style=flat-square)](https://github.com/AcendWay/PiDE_Piper_VSCode_Extention)
+[![Website](https://img.shields.io/badge/website-PiEDPiPER.dev-6366f1?style=flat-square&logo=googlechrome&logoColor=white)](https://PiEDPiPER.dev)
 
 </div>
 
@@ -379,9 +380,9 @@ Inspired by [pithings/pi-vscode](https://github.com/pithings/pi-vscode) and [cde
 
 <div align="center">
 
-<img src="media/pi-logo-color.svg" width="32" height="32" alt="π" />
+<img src="media/PiDE_Piper_Logo.png" width="48" height="48" alt="PiDE Piper" />
 
-**PiDE Piper** · Open source · MIT License
+**PiDE Piper** · [PiEDPiPER.dev](https://PiEDPiPER.dev) · Open source · MIT License
 
 _If you find this useful, ⭐ the repo and tell a friend._
 

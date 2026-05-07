@@ -2,9 +2,17 @@
   "name": "pi-vscode-sidebar",
   "displayName": "Pi Sidebar",
   "description": "Run the Pi coding agent as a native VS Code terminal with sidebar management: model selector, context indicator, session history, and package marketplace.",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": false,
   "publisher": "local",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AcendWay/PiDE_Piper_VSCode_Extention.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AcendWay/PiDE_Piper_VSCode_Extention/issues"
+  },
+  "homepage": "https://github.com/AcendWay/PiDE_Piper_VSCode_Extention#readme",
   "extensionKind": [
     "workspace",
     "ui"
@@ -25,7 +33,7 @@
         {
           "id": "piSidebar",
           "title": "Pi",
-          "icon": "media/pi.svg"
+          "icon": "media/PiDE_Piper_Logo.svg"
         }
       ]
     },
@@ -63,16 +71,16 @@
         "command": "piSidebar.open",
         "title": "Pi: Open Terminal",
         "icon": {
-          "light": "media/pi-logo-light.svg",
-          "dark": "media/pi-logo-dark.svg"
+          "light": "media/PiDE_Piper_Logo.svg",
+          "dark": "media/PiDE_Piper_Logo.svg"
         }
       },
       {
         "command": "piSidebar.openWithFile",
         "title": "Pi: Open with File Context",
         "icon": {
-          "light": "media/pi-logo-light.svg",
-          "dark": "media/pi-logo-dark.svg"
+          "light": "media/PiDE_Piper_Logo.svg",
+          "dark": "media/PiDE_Piper_Logo.svg"
         }
       },
       {
@@ -233,7 +241,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p ./",
     "package": "npm run compile && npx @vscode/vsce package --allow-missing-repository --no-git-tag-version",
-    "package-install": "npm run package && code --install-extension pi-vscode-sidebar-0.3.2.vsix"
+    "package-install": "npm run package && node -e \"const {execSync}=require('child_process'),v=require('./package.json').version;execSync('code --install-extension pi-vscode-sidebar-'+v+'.vsix',{stdio:'inherit'})\"",
+    "postversion": "node scripts/sync-version.js",
+    "prepackage": "node scripts/sync-version.js"
   },
   "dependencies": {
     "typebox": "^1.0.58"
@@ -244,5 +254,6 @@
     "node-gyp": "^12.3.0",
     "typescript": "^5.7.3",
     "vitest": "^4.1.5"
-  }
+  },
+  "icon": "media/PiDE_Piper_Logo.png"
 }
