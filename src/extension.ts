@@ -44,7 +44,7 @@ export async function activate(
 
 	// ── Sidebar views ────────────────────────────────────────────────────────
 	controlView = new ControlViewProvider(context, bridge);
-	sessionsView = new SessionsViewProvider(context);
+	sessionsView = new SessionsViewProvider(context, bridge, sessionTracker);
 	packagesView = new PackagesViewProvider(context, bridge);
 
 	context.subscriptions.push(
@@ -255,6 +255,16 @@ export async function activate(
 	if (vscode.workspace.getConfiguration("piSidebar").get<boolean>("restoreSessions", true)) {
 		void sessionTracker.restore(bridge, context.extensionUri);
 	}
+
+	// Push active sessions to sessions view whenever they change
+	const refreshActiveSessions = () => {
+		const tracked = sessionTracker?.getSessions().map((s) => s.sessionFile) ?? [];
+		sessionsView?.setActiveSessions(tracked);
+	};
+	context.subscriptions.push(
+		vscode.window.onDidOpenTerminal(() => setTimeout(refreshActiveSessions, 500)),
+		vscode.window.onDidCloseTerminal(() => setTimeout(refreshActiveSessions, 500)),
+	);
 
 	// ── Show sidebar on startup if configured ────────────────────────────────
 	const cfg = vscode.workspace.getConfiguration("piSidebar");
