@@ -107,14 +107,27 @@ const RangeParam = Type.Object(
 
 let _footerInterval = null;
 
+/**
+ * Poll vscode_get_status every 4 seconds and push the result to pi's
+ * TUI footer bar. Stops cleanly if the bridge becomes unreachable.
+ * No-op if:
+ *   - Bridge env vars are absent (running pi outside VS Code)
+ *   - pi does not expose setFooterStatus
+ */
 function startFooterPolling(pi) {
-	if (_footerInterval) return;
+	// Guard: bridge env vars must be set
+	if (!process.env.PI_VSCODE_BRIDGE_URL || !process.env.PI_VSCODE_BRIDGE_TOKEN)
+		return;
+	// Guard: pi must expose the footer API
 	if (typeof pi.setFooterStatus !== "function") return;
+	if (_footerInterval) return;
+
 	_footerInterval = setInterval(async () => {
 		try {
 			const raw = await callVsCode("getStatus", {});
 			const status = typeof raw === "string" ? JSON.parse(raw) : raw;
 			if (!status?.activeEditor) return;
+
 			const { filePath, languageId, cursor, isDirty, diagnostics } =
 				status.activeEditor;
 			const diag = diagnostics ?? {};
@@ -122,14 +135,22 @@ function startFooterPolling(pi) {
 			const warns = diag.warnings ? ` ⚠${diag.warnings}` : "";
 			const dirty = isDirty ? " ●" : "";
 			const [line, col] = Array.isArray(cursor) ? cursor : [0, 0];
+
+			// Format: "src/extension.ts  :142:5  typescript  ● ✗2 ⚠1"
 			pi.setFooterStatus(
 				`${filePath}  :${line}:${col}  ${languageId}${dirty}${errors}${warns}`,
 			);
 		} catch {
+			// Bridge unavailable — stop polling silently
 			clearInterval(_footerInterval);
 			_footerInterval = null;
 		}
 	}, 4_000);
+
+	// Clean up on process exit
+	process.once("exit", () => {
+		if (_footerInterval) clearInterval(_footerInterval);
+	});
 }
 
 // ── Module export ─────────────────────────────────────────────────────────────

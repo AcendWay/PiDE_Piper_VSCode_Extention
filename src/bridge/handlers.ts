@@ -179,27 +179,43 @@ async function getEditorState(
 
 function getStatus(state: BridgeState): unknown {
 	const active = vscode.window.activeTextEditor;
-	const diagnostics = active
-		? getDiagnosticSummary(
-				vscode.languages.getDiagnostics(active.document.uri),
-			)
-		: { errors: 0, warnings: 0, infos: 0, hints: 0 };
+
+	// Build activeEditor block — fall back to latestSelection metadata when
+	// focus is on the Pi terminal and no text editor is "active".
+	let activeEditor: Record<string, unknown> | null = null;
+	if (active) {
+		const diagnostics = getDiagnosticSummary(
+			vscode.languages.getDiagnostics(active.document.uri),
+		);
+		activeEditor = {
+			filePath: vscode.workspace.asRelativePath(active.document.uri),
+			languageId: active.document.languageId,
+			cursor: [
+				active.selection.active.line + 1,
+				active.selection.active.character + 1,
+			],
+			isDirty: active.document.isDirty,
+			// Diagnostics nested inside activeEditor so footer polling can
+			// destructure them from the same object.
+			diagnostics,
+		};
+	} else if (state.latestSelection) {
+		// No active editor (Pi terminal has focus) — use cached selection
+		const sel = state.latestSelection;
+		activeEditor = {
+			filePath: sel.filePath,
+			languageId: sel.languageId,
+			cursor: [sel.startLine, sel.startCharacter],
+			isDirty: false,
+			diagnostics: { errors: 0, warnings: 0, infos: 0, hints: 0 },
+		};
+	}
+
 	return {
 		workspaceFolders:
 			vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [],
-		activeEditor: active
-			? {
-					filePath: vscode.workspace.asRelativePath(active.document.uri),
-					languageId: active.document.languageId,
-					cursor: [
-						active.selection.active.line + 1,
-						active.selection.active.character + 1,
-					],
-					isDirty: active.document.isDirty,
-				}
-			: null,
+		activeEditor,
 		latestSelection: state.latestSelection,
-		diagnostics,
 		contextUsage: state.contextUsage,
 	};
 }
