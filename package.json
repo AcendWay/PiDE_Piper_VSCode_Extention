@@ -95,7 +95,26 @@
         {
           "command": "piSidebar.openWithFile",
           "group": "navigation",
-          "when": "true"
+          "when": "editorIsOpen"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "piSidebar.sendSelection",
+          "group": "z_pi@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "piSidebar.openWithFile",
+          "group": "z_pi@2",
+          "when": "editorTextFocus"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "piSidebar.sendSelection",
+          "group": "z_pi@1",
+          "when": "!explorerResourceIsFolder"
         }
       ]
     },

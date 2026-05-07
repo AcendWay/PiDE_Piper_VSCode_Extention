@@ -1,14 +1,15 @@
 import * as vscode from "vscode";
 import { createBridge } from "./bridge/server";
 import type { Bridge } from "./bridge/server";
-import { clearPiBinaryCache, upgradePi } from "./pi";
+import { clearPiBinaryCache, findPiBinary, upgradePi } from "./pi";
 import {
 	buildFileContextLines,
+	buildFileContextSummary,
 	createPiTerminal,
+	ensureTerminalAndSend,
 	findPiTerminal,
 	focusOrCreateTerminal,
 	restartPiTerminal,
-	sendTextToTerminal,
 } from "./terminal";
 import { ControlViewProvider } from "./views/controlView";
 import { PackagesViewProvider } from "./views/packagesView";
@@ -66,13 +67,17 @@ export async function activate(
 		vscode.window.registerTerminalProfileProvider("piSidebar.terminalProfile", {
 			provideTerminalProfile() {
 				if (!bridge) return undefined;
+				// Use the auto-detected binary so the profile respects the
+				// same resolution logic as all other terminal launches.
+				const piPath = findPiBinary();
 				return new vscode.TerminalProfile({
 					name: "Pi Agent",
-					shellPath: "pi",
+					shellPath: piPath,
 					env: {
 						PI_VSCODE_BRIDGE_URL: bridge.url,
 						PI_VSCODE_BRIDGE_TOKEN: bridge.token,
 					},
+					cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
 					iconPath: {
 						light: vscode.Uri.joinPath(
 							context.extensionUri,
@@ -100,10 +105,22 @@ export async function activate(
 
 		vscode.commands.registerCommand("piSidebar.openWithFile", async () => {
 			if (!bridge) return;
-			const contextLines = buildFileContextLines();
-			await createPiTerminal(bridge, context.extensionUri, {
-				contextLines,
-			});
+			const editor = vscode.window.activeTextEditor;
+			if (!editor) {
+				vscode.window.showWarningMessage("Pi: No active editor.");
+				return;
+			}
+			const existing = findPiTerminal();
+			if (existing) {
+				// Terminal already running — send context as a message
+				const summary = buildFileContextSummary();
+				existing.show(true);
+				existing.sendText(summary, true);
+			} else {
+				// No terminal — start fresh with file context in system prompt
+				const contextLines = buildFileContextLines();
+				await createPiTerminal(bridge, context.extensionUri, { contextLines });
+			}
 		}),
 
 		vscode.commands.registerCommand("piSidebar.sendSelection", async () => {
@@ -113,26 +130,22 @@ export async function activate(
 				vscode.window.showWarningMessage("Pi: No active editor.");
 				return;
 			}
+			// Use selected text if available, otherwise send file context summary
 			const text = editor.selection.isEmpty
-				? buildFileContextLines().join("\n")
+				? buildFileContextSummary()
 				: editor.document.getText(editor.selection);
 			if (!text.trim()) {
-				vscode.window.showWarningMessage("Pi: Nothing selected.");
+				vscode.window.showWarningMessage("Pi: Nothing to send.");
 				return;
 			}
-			// Ensure a terminal exists then send
-			await focusOrCreateTerminal(bridge, context.extensionUri);
-			setTimeout(() => sendTextToTerminal(text + "\r"), 300);
+			await ensureTerminalAndSend(text, bridge, context.extensionUri);
 		}),
 
 		vscode.commands.registerCommand("piSidebar.reviewDiffs", async () => {
 			if (!bridge) return;
-			await focusOrCreateTerminal(bridge, context.extensionUri);
-			setTimeout(() => {
-				sendTextToTerminal(
-					"Review the current git diffs. Use vscode_context with includeDiff=true, then inspect changed files as needed.\r",
-				);
-			}, 300);
+			const prompt =
+				"Review the current git diffs. Use vscode_context with includeDiff=true, then inspect changed files as needed.";
+			await ensureTerminalAndSend(prompt, bridge, context.extensionUri);
 		}),
 
 		vscode.commands.registerCommand("piSidebar.restart", async () => {

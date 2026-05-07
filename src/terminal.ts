@@ -148,17 +148,51 @@ export async function restartPiTerminal(
 
 /**
  * Send text to the running Pi terminal (if one exists).
+ * @param addNewline - append \r to submit the input (default true)
  */
-export function sendTextToTerminal(text: string): boolean {
+export function sendTextToTerminal(
+	text: string,
+	addNewline = true,
+): boolean {
 	const terminal = findPiTerminal();
 	if (!terminal) return false;
 	terminal.show(true);
-	terminal.sendText(text, false); // false = don't append \n (caller decides)
+	terminal.sendText(text, addNewline);
 	return true;
 }
 
 /**
- * Build the context message sent when the user runs "Open with File" or "Send Context".
+ * Ensure a Pi terminal exists, then send text once it is ready.
+ * If the terminal already exists the text is sent immediately.
+ * If a new terminal is being created we wait for it to signal readiness
+ * via a brief poll (VS Code doesn't expose an "onReady" event for terminals).
+ */
+export async function ensureTerminalAndSend(
+	text: string,
+	bridgeConfig: { url: string; token: string },
+	extensionUri: vscode.Uri,
+	addNewline = true,
+): Promise<void> {
+	const existing = findPiTerminal();
+	if (existing) {
+		existing.show(true);
+		existing.sendText(text, addNewline);
+		return;
+	}
+
+	// Terminal doesn't exist — create it, then send after a startup delay.
+	// We use a longer delay for a fresh terminal so pi's TUI has time to
+	// initialise before receiving input.
+	const terminal = await createPiTerminal(bridgeConfig, extensionUri);
+	if (!terminal) return;
+	await new Promise<void>((r) => setTimeout(r, 1500));
+	terminal.sendText(text, addNewline);
+}
+
+/**
+ * Build context lines for the active editor state.
+ * Used both for --append-system-prompt (new terminal) and
+ * for sending context mid-session to an existing terminal.
  */
 export function buildFileContextLines(): string[] {
 	const lines: string[] = [];
@@ -174,7 +208,9 @@ export function buildFileContextLines(): string[] {
 	if (selection.isEmpty) {
 		lines.push(`The user is currently viewing: ${fileName}`);
 		lines.push(
-			`Cursor is at line ${selection.active.line + 1}, character ${selection.active.character + 1}.`,
+			`Cursor is at line ${selection.active.line + 1}, character ${
+				selection.active.character + 1
+			}.`,
 		);
 	} else {
 		const text = editor.document.getText(selection);
@@ -186,6 +222,32 @@ export function buildFileContextLines(): string[] {
 	}
 
 	return lines;
+}
+
+/**
+ * Build a compact single-line context summary for sending to a running session.
+ * e.g. "File: src/foo.ts | Cursor: 42:5 | Selection: lines 40-45"
+ */
+export function buildFileContextSummary(): string {
+	const editor = vscode.window.activeTextEditor;
+	if (!editor) return "No active editor.";
+
+	const rel = vscode.workspace.asRelativePath(editor.document.uri);
+	const { active, start, end, isEmpty } = editor.selection;
+	const cursor = `${active.line + 1}:${active.character + 1}`;
+	const lang = editor.document.languageId;
+	const dirty = editor.document.isDirty ? " (unsaved)" : "";
+
+	if (isEmpty) {
+		return `File context: ${rel} | Language: ${lang} | Cursor: ${cursor}${dirty}`;
+	}
+
+	const selectedText = editor.document.getText(editor.selection);
+	return (
+		`File context: ${rel} | Language: ${lang} | ` +
+		`Selection lines ${start.line + 1}–${end.line + 1}${dirty}:\n` +
+		`\`\`\`${lang}\n${selectedText}\n\`\`\``
+	);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
