@@ -598,7 +598,9 @@ module.exports = (pi) => {
 			total: Type.Number({ description: "Total context window capacity" }),
 		}),
 		async execute(_id, params) {
-			return textResult(await callVsCode("reportContextUsage", params));
+			// Auto-inject terminalId so the bridge can route to the right tab
+			const payload = terminalId ? { ...params, terminalId } : params;
+			return textResult(await callVsCode("reportContextUsage", payload));
 		},
 	});
 };

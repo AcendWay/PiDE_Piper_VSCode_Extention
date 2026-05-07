@@ -5,12 +5,19 @@
   "version": "0.2.0",
   "private": false,
   "publisher": "local",
-  "extensionKind": ["workspace", "ui"],
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
   "engines": {
     "vscode": "^1.92.0"
   },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -148,13 +155,19 @@
         },
         "piSidebar.terminalLocation": {
           "type": "string",
-          "enum": ["beside", "panel", "active"],
+          "enum": [
+            "beside",
+            "panel",
+            "active"
+          ],
           "default": "beside",
           "description": "Where to open the Pi terminal: beside the editor, in the bottom panel, or in the active editor group."
         },
         "piSidebar.startupArgs": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Extra arguments passed to pi on startup. Example: [\"--model\", \"claude-sonnet-4\"]"
         },
@@ -190,6 +203,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit -p ./",
     "package": "npm run compile && npx @vscode/vsce package --allow-missing-repository --no-git-tag-version",
     "package-install": "npm run package && code --install-extension pi-vscode-sidebar-0.2.0.vsix"
@@ -201,6 +215,7 @@
     "@types/node": "^20.17.19",
     "@types/vscode": "^1.92.0",
     "node-gyp": "^12.3.0",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.5"
   }
 }

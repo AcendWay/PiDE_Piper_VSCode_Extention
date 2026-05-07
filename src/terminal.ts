@@ -12,11 +12,46 @@ import {
 export const TERMINAL_NAME = "Pi Agent";
 
 /**
- * Find an existing Pi terminal in the current window.
- * Returns the terminal if found, undefined otherwise.
+ * Module-level cache of the last focused Pi terminal ID.
+ * Updated by extension.ts via setLastFocusedTerminalId.
+ */
+let _lastFocusedTerminalId: string | undefined;
+
+export function setLastFocusedTerminalId(terminalId: string | undefined): void {
+	_lastFocusedTerminalId = terminalId;
+}
+
+/**
+ * Return all currently open Pi terminals.
+ */
+export function findAllPiTerminals(): vscode.Terminal[] {
+	return vscode.window.terminals.filter(
+		(t) => t.name === TERMINAL_NAME || t.name.startsWith(`${TERMINAL_NAME} ·`) || t.name.startsWith(`${TERMINAL_NAME} `),
+	);
+}
+
+/**
+ * Find a Pi terminal by its PI_VSCODE_TERMINAL_ID env var.
+ * Returns undefined if not found (VS Code doesn't expose env vars on terminals
+ * directly, so we rely on the extension tracking them in a side-map).
+ * Pass the side-map from extension.ts.
+ */
+export function findPiTerminalById(
+	terminalId: string,
+	terminalMap: Map<string, vscode.Terminal>,
+): vscode.Terminal | undefined {
+	return terminalMap.get(terminalId);
+}
+
+/**
+ * Find the last-focused Pi terminal. Falls back to the first Pi terminal
+ * in the terminal list if the last-focused one is no longer alive.
  */
 export function findPiTerminal(): vscode.Terminal | undefined {
-	return vscode.window.terminals.find((t) => t.name === TERMINAL_NAME);
+	const all = findAllPiTerminals();
+	if (all.length === 0) return undefined;
+	// No last-focused preference — return the first one
+	return all[0];
 }
 
 /**
@@ -33,13 +68,14 @@ export async function focusOrCreateTerminal(
 		contextLines?: string[];
 		terminalId?: string;
 	} = {},
-): Promise<vscode.Terminal | undefined> {
+): Promise<{ terminal: vscode.Terminal; terminalId: string } | undefined> {
 	// Reuse existing Pi terminal if one is running and no specific session/model requested
 	if (!options.sessionFile && !options.model && !options.extraArgs?.length) {
 		const existing = findPiTerminal();
 		if (existing) {
 			existing.show(true);
-			return existing;
+			// terminalId is unknown at reuse time — return undefined as id
+			return { terminal: existing, terminalId: options.terminalId ?? "" };
 		}
 	}
 	return createPiTerminal(bridgeConfig, extensionUri, options);
@@ -58,7 +94,7 @@ export async function createPiTerminal(
 		contextLines?: string[];
 		terminalId?: string;
 	} = {},
-): Promise<vscode.Terminal | undefined> {
+): Promise<{ terminal: vscode.Terminal; terminalId: string } | undefined> {
 	const piPath = await ensurePiBinary();
 	if (!piPath) return undefined;
 
@@ -131,7 +167,7 @@ export async function createPiTerminal(
 	});
 
 	terminal.show(true);
-	return terminal;
+	return { terminal, terminalId };
 }
 
 /**
@@ -140,7 +176,7 @@ export async function createPiTerminal(
 export async function restartPiTerminal(
 	bridgeConfig: { url: string; wslUrl: string; token: string },
 	extensionUri: vscode.Uri,
-): Promise<vscode.Terminal | undefined> {
+): Promise<{ terminal: vscode.Terminal; terminalId: string } | undefined> {
 	const existing = findPiTerminal();
 	if (existing) {
 		existing.dispose();
@@ -184,10 +220,10 @@ export async function ensureTerminalAndSend(
 	// Terminal doesn't exist — create it, then send after a startup delay.
 	// We use a longer delay for a fresh terminal so pi's TUI has time to
 	// initialise before receiving input.
-	const terminal = await createPiTerminal(bridgeConfig, extensionUri);
-	if (!terminal) return;
+	const result = await createPiTerminal(bridgeConfig, extensionUri);
+	if (!result) return;
 	await new Promise<void>((r) => setTimeout(r, 1500));
-	terminal.sendText(text, addNewline);
+	result.terminal.sendText(text, addNewline);
 }
 
 /**

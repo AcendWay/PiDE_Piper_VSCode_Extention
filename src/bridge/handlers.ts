@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { upsertTab } from "./state";
 import type { BridgeState } from "./state";
 import type { DiagnosticEntry } from "./types";
 
@@ -31,22 +32,43 @@ export async function handleBridgeAction(
 		// ── Status / context reporting ────────────────────────────────────
 		case "getStatus":
 			return getStatus(state);
-		case "getContextUsage":
-			return state.contextUsage;
+		case "getContextUsage": {
+			// If caller supplies terminalId, return that tab's usage.
+			// Otherwise fall back to current tab, then legacy singleton.
+			const tid = String(p.terminalId ?? "");
+			if (tid) return state.tabs.get(tid)?.contextUsage ?? null;
+			return state.tabs.getCurrent()?.contextUsage ?? state.contextUsage;
+		}
 		case "reportContextUsage": {
-			state.contextUsage = {
-				used: Number(p.used ?? 0),
-				total: Number(p.total ?? 0),
-			};
+			const used = Number(p.used ?? 0);
+			const total = Number(p.total ?? 0);
+			// Update legacy singleton for backwards compat
+			state.contextUsage = { used, total };
+			// Update per-tab state when terminalId is provided
+			const tid = String(p.terminalId ?? "");
+			if (tid) {
+				upsertTab(state, tid, { contextUsage: { used, total } });
+			}
 			return { received: true };
+		}
+
+		// ── Tab management ────────────────────────────────────────────────
+		case "listTabs":
+			return state.tabs.toArray();
+		case "getTabSnapshot": {
+			const tid = String(p.terminalId ?? "");
+			return tid ? (state.tabs.get(tid) ?? null) : null;
 		}
 
 		// ── Session reporting ─────────────────────────────────────────────
 		case "reportTerminalSession": {
 			const terminalId = String(p.terminalId ?? "");
 			const sessionFile = String(p.sessionFile ?? "");
-			if (terminalId && sessionFile)
+			if (terminalId && sessionFile) {
 				state.reportTerminalSession(terminalId, sessionFile);
+				// Keep tab state in sync
+				upsertTab(state, terminalId, { sessionFile });
+			}
 			return { received: true };
 		}
 

@@ -98,6 +98,10 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 	private view?: vscode.WebviewView;
 	private terminalRunning = false;
 	private contextPollTimer?: ReturnType<typeof setInterval>;
+	/** Current list of tabs for the mini-strip. */
+	private tabs: import("../agentTabState").AgentTabState[] = [];
+	/** terminalId of the currently-active tab. */
+	private currentTerminalId: string | null = null;
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -133,6 +137,16 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 			// Reset context usage when terminal closes
 			this.post({ type: "contextUsage", used: 0, total: 0, reset: true });
 		}
+	}
+
+	/** Push updated tab list to the webview mini-strip. */
+	notifyTabsChanged(
+		tabs: import("../agentTabState").AgentTabState[],
+		currentTerminalId: string | null,
+	): void {
+		this.tabs = tabs;
+		this.currentTerminalId = currentTerminalId;
+		this.post({ type: "tabsChanged", tabs: tabs.map(serializeTab), currentTerminalId });
 	}
 
 	notifyFileStatus(status: FileStatus | null): void {
@@ -177,6 +191,11 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 			case "selectModel":
 				await this.applyModel(msg.model ?? "");
 				break;
+			case "focusTab": {
+				// Delegate to extension which holds the terminalMap
+				await vscode.commands.executeCommand("piSidebar.focusTab", msg.terminalId);
+				break;
+			}
 			case "open":
 				await focusOrCreateTerminal(this.bridge, this.context.extensionUri);
 				this.notifyTerminalState(true);
@@ -204,6 +223,12 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 						used: usage.used,
 						total: usage.total,
 					});
+				// Push current tabs
+				this.post({
+					type: "tabsChanged",
+					tabs: this.tabs.map(serializeTab),
+					currentTerminalId: this.currentTerminalId,
+				});
 				break;
 			}
 		}
@@ -323,6 +348,50 @@ body {
   white-space: nowrap;
   max-width: 120px;
 }
+
+/* ── Mini tab strip ── */
+.tab-strip { display: flex; flex-direction: column; gap: 3px; }
+.tab-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  background: transparent;
+  border: none;
+  color: var(--vscode-foreground);
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+  transition: background 0.12s;
+}
+.tab-row:hover { background: var(--vscode-list-hoverBackground); }
+.tab-row.active {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+  border-left: 2px solid var(--vscode-focusBorder, #007acc);
+  padding-left: 4px;
+}
+.tab-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1.5px solid var(--vscode-descriptionForeground);
+}
+.tab-dot.clear  { background: transparent; border-color: var(--vscode-descriptionForeground); }
+.tab-dot.idle   { background: #e5a731; border-color: #e5a731; }
+.tab-dot.working {
+  background: var(--vscode-testing-iconPassed, #89d185);
+  border-color: var(--vscode-testing-iconPassed, #89d185);
+  box-shadow: 0 0 0 2px rgba(137,209,133,0.25);
+}
+.tab-dot.attention { background: var(--vscode-testing-iconFailed, #f44747); border-color: var(--vscode-testing-iconFailed, #f44747); }
+.tab-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.tab-model { font-size: 9px; color: var(--vscode-descriptionForeground); flex-shrink: 0; }
+.tab-strip-empty { font-size: 10px; color: var(--vscode-descriptionForeground); font-style: italic; padding: 2px 6px; }
 
 /* ── Sections ── */
 .section { display: flex; flex-direction: column; gap: 6px; }
@@ -474,6 +543,14 @@ button.action:disabled { opacity: 0.38; cursor: default; }
     ${this.terminalRunning ? "Pi Agent running" : "Pi Agent stopped"}
   </span>
   <span class="workspace-name" title="${esc(workspace)}">${esc(workspaceName)}</span>
+</div>
+
+<!-- Mini tab strip -->
+<div class="section" id="tabStripSection">
+  <div class="section-label">Active Sessions</div>
+  <div class="tab-strip" id="tabStrip">
+    <span class="tab-strip-empty">No Pi terminals running</span>
+  </div>
 </div>
 
 <!-- Model selector -->
@@ -642,6 +719,32 @@ function esc(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Mini tab strip ───────────────────────────────────────────────
+function renderTabStrip(tabs, currentId) {
+  const strip = document.getElementById('tabStrip');
+  if (!strip) return;
+  if (!tabs || !tabs.length) {
+    strip.innerHTML = '<span class="tab-strip-empty">No Pi terminals running</span>';
+    return;
+  }
+  strip.innerHTML = tabs.map(tab => {
+    const isActive = tab.terminalId === currentId;
+    const dotClass = tab.agentState || 'clear';
+    const model = tab.model ? '<span class="tab-model">' + esc(tab.model) + '</span>' : '';
+    return '<button class="tab-row' + (isActive ? ' active' : '') + '" ' +
+      'data-tid="' + esc(tab.terminalId) + '">' +
+      '<span class="tab-dot ' + dotClass + '"></span>' +
+      '<span class="tab-title">' + esc(tab.title) + '</span>' +
+      model + '</button>';
+  }).join('');
+}
+
+document.getElementById('tabStrip').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-tid]');
+  if (!btn) return;
+  send('focusTab', { terminalId: btn.dataset.tid });
+});
+
 window.addEventListener('message', e => {
   const msg = e.data;
   switch (msg.type) {
@@ -649,6 +752,7 @@ window.addEventListener('message', e => {
     case 'contextUsage':  updateContextBar(msg.used, msg.total, msg.reset); break;
     case 'fileStatus':    updateFileRow(msg.status); break;
     case 'modelChanged':  updateModel(msg.model); break;
+    case 'tabsChanged':   renderTabStrip(msg.tabs, msg.currentTerminalId); break;
   }
 });
 
@@ -663,6 +767,17 @@ send('ready');
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/** Serialize a tab for the webview (avoid sending internal fields). */
+function serializeTab(tab: import("../agentTabState").AgentTabState): object {
+	return {
+		terminalId: tab.terminalId,
+		title: tab.title,
+		agentState: tab.agentState,
+		model: tab.model,
+		index: tab.index,
+	};
+}
+
 export interface FileStatus {
 	filePath: string;
 	languageId: string;
@@ -675,6 +790,7 @@ export interface FileStatus {
 interface WebviewMessage {
 	type: string;
 	model?: string;
+	terminalId?: string;
 }
 
 function esc(s: string): string {

@@ -53,11 +53,12 @@ export class SessionTracker {
 		for (const entry of sessions) {
 			if (!fs.existsSync(entry.sessionFile)) continue; // prune stale
 			valid.push(entry);
-			const terminal = await createPiTerminal(bridge, extensionUri, {
+			const result = await createPiTerminal(bridge, extensionUri, {
 				sessionFile: entry.sessionFile,
 				extraArgs: [],
 			});
-			if (terminal) {
+			if (result) {
+				const { terminal } = result;
 				this.terminalIds.set(terminal, entry.terminalId);
 				// Brief title hint that this was restored
 				void vscode.window.showInformationMessage(

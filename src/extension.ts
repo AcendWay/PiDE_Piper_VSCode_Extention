@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import * as vscode from "vscode";
 import { createBridge } from "./bridge/server";
 import { registerBridgeListeners } from "./bridge/listeners";
@@ -14,9 +15,12 @@ import {
 	buildFileContextSummary,
 	createPiTerminal,
 	ensureTerminalAndSend,
+	findAllPiTerminals,
 	findPiTerminal,
 	focusOrCreateTerminal,
 	restartPiTerminal,
+	setLastFocusedTerminalId,
+	TERMINAL_NAME,
 } from "./terminal";
 import { ControlViewProvider, type FileStatus } from "./views/controlView";
 import { DropzoneViewProvider } from "./views/dropzoneView";
@@ -29,6 +33,12 @@ let bridge: Bridge | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let controlView: ControlViewProvider | undefined;
 let dropzoneView: DropzoneViewProvider | undefined;
+/** Maps PI_VSCODE_TERMINAL_ID → vscode.Terminal, populated when each terminal opens. */
+const terminalMap = new Map<string, vscode.Terminal>();
+/** Map terminal object → its terminalId (reverse lookup). */
+const terminalIdMap = new WeakMap<vscode.Terminal, string>();
+/** Tracks pending grace-period timers for tab cleanup after terminal close. */
+const closeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let sessionsView: SessionsViewProvider | undefined;
 let packagesView: PackagesViewProvider | undefined;
 let modelsView: ModelsViewProvider | undefined;
@@ -133,7 +143,8 @@ export async function activate(
 	context.subscriptions.push(
 		vscode.commands.registerCommand("piSidebar.open", async () => {
 			if (!bridge) return;
-			await focusOrCreateTerminal(bridge, context.extensionUri);
+			const res = await focusOrCreateTerminal(bridge, context.extensionUri);
+			if (res) registerPiTerminal(res.terminal, res.terminalId);
 			await revealSidebar();
 		}),
 
@@ -153,7 +164,8 @@ export async function activate(
 			} else {
 				// No terminal — start fresh with file context in system prompt
 				const contextLines = buildFileContextLines();
-				await createPiTerminal(bridge, context.extensionUri, { contextLines });
+				const res2 = await createPiTerminal(bridge, context.extensionUri, { contextLines });
+				if (res2) registerPiTerminal(res2.terminal, res2.terminalId);
 			}
 		}),
 
@@ -184,7 +196,8 @@ export async function activate(
 
 		vscode.commands.registerCommand("piSidebar.restart", async () => {
 			if (!bridge) return;
-			await restartPiTerminal(bridge, context.extensionUri);
+			const restartRes = await restartPiTerminal(bridge, context.extensionUri);
+			if (restartRes) registerPiTerminal(restartRes.terminal, restartRes.terminalId);
 			// onDidOpenTerminal will flip the dot back to running — but if
 			// the close event is in flight, force a re-check too.
 			setTimeout(() => {
@@ -195,7 +208,8 @@ export async function activate(
 		vscode.commands.registerCommand("piSidebar.newSession", async () => {
 			if (!bridge) return;
 			// Force a brand-new terminal with no session file
-			await createPiTerminal(bridge, context.extensionUri);
+			const newRes = await createPiTerminal(bridge, context.extensionUri);
+			if (newRes) registerPiTerminal(newRes.terminal, newRes.terminalId);
 		}),
 
 		vscode.commands.registerCommand("piSidebar.selectModel", async () => {
@@ -216,7 +230,15 @@ export async function activate(
 					model,
 					vscode.ConfigurationTarget.Global,
 				);
-				await restartPiTerminal(bridge, context.extensionUri);
+				const selRes = await restartPiTerminal(bridge, context.extensionUri);
+				if (selRes) registerPiTerminal(selRes.terminal, selRes.terminalId);
+			}
+		}),
+
+		vscode.commands.registerCommand("piSidebar.focusTab", async (terminalId: string) => {
+			const terminal = terminalMap.get(terminalId);
+			if (terminal) {
+				terminal.show(true);
 			}
 		}),
 
@@ -234,28 +256,50 @@ export async function activate(
 		}),
 	);
 
-	// ── Terminal close listener ──────────────────────────────────────────────
+	// ── Terminal lifecycle listeners ─────────────────────────────────────────
 	context.subscriptions.push(
 		vscode.window.onDidOpenTerminal((terminal) => {
-			if (
-				terminal.name === "Pi Agent" ||
-				terminal.name.startsWith("Pi Agent")
-			) {
-				controlView?.notifyTerminalState(true);
-				dropzoneView?.notifyTerminalState(true);
-			}
+			if (!isPiTerminal(terminal)) return;
+			controlView?.notifyTerminalState(true);
+			dropzoneView?.notifyTerminalState(true);
 		}),
+
 		vscode.window.onDidCloseTerminal((terminal) => {
-			if (
-				terminal.name === "Pi Agent" ||
-				terminal.name.startsWith("Pi Agent")
-			) {
-				sessionTracker?.onClose(terminal);
-				setTimeout(() => {
-					const running = !!findPiTerminal();
-					controlView?.notifyTerminalState(running);
-					dropzoneView?.notifyTerminalState(running);
-				}, 250);
+			if (!isPiTerminal(terminal)) return;
+			sessionTracker?.onClose(terminal);
+
+			// Look up this terminal's id from our reverse map
+			const tid = terminalIdMap.get(terminal);
+
+			// 30-second grace period before removing the tab from bridge state.
+			// A terminal close during a restart re-creates the terminal immediately;
+			// the grace period prevents the strip from flickering.
+			if (tid && bridge) {
+				const timer = setTimeout(() => {
+					closeTimers.delete(tid);
+					terminalMap.delete(tid);
+					bridge!.state.tabs.remove(tid);
+					controlView?.notifyTabsChanged(bridge!.state.tabs.toArray(), bridge!.state.currentTerminalId);
+				}, 30_000);
+				closeTimers.set(tid, timer);
+			}
+
+			setTimeout(() => {
+				const running = !!findPiTerminal();
+				controlView?.notifyTerminalState(running);
+				dropzoneView?.notifyTerminalState(running);
+			}, 250);
+		}),
+
+		// Track which Pi terminal the user most recently focused.
+		vscode.window.onDidChangeActiveTerminal((terminal) => {
+			if (!terminal || !isPiTerminal(terminal)) return;
+			const tid = terminalIdMap.get(terminal);
+			if (tid && bridge) {
+				bridge.state.currentTerminalId = tid;
+				try { bridge.state.tabs.setCurrent(tid); } catch { /* tab may not exist yet */ }
+				setLastFocusedTerminalId(tid);
+				controlView?.notifyTabsChanged(bridge.state.tabs.toArray(), tid);
 			}
 		}),
 	);
@@ -293,6 +337,17 @@ export async function activate(
 	);
 	pushFileStatus(); // seed on startup
 
+	// ── Activation reconciliation: sync bridge tabs against running terminals ──
+	// Any Pi terminals that survived a window reload are already running —
+	// register them so the strip is populated immediately.
+	for (const t of findAllPiTerminals()) {
+		// We can't recover the original terminalId after a reload, so generate a new one.
+		// The pi-side extension will call reportTerminalSession on its next poll,
+		// which will upsert the tab with real session data.
+		const recoveredId = crypto.randomUUID();
+		registerPiTerminal(t, recoveredId);
+	}
+
 	// ── Restore sessions from previous VS Code window ──────────────────
 	const piSidebarCfg = vscode.workspace.getConfiguration("piSidebar");
 	if (piSidebarCfg.get<boolean>("restoreSessions", true)) {
@@ -306,7 +361,8 @@ export async function activate(
 	// ── Auto-start a Pi terminal on activation if none exists ───────────────
 	if (!findPiTerminal() && piSidebarCfg.get<boolean>("autoStart", true)) {
 		try {
-			await createPiTerminal(bridge, context.extensionUri);
+			const startRes = await createPiTerminal(bridge, context.extensionUri);
+			if (startRes) registerPiTerminal(startRes.terminal, startRes.terminalId);
 			controlView?.notifyTerminalState(true);
 		} catch (err) {
 			console.error("Pi: auto-start failed", err);
@@ -367,4 +423,39 @@ function commonModels(): string[] {
 /** Exported so views can get the current bridge/terminal handle. */
 export function getActivePiTerminal(): vscode.Terminal | undefined {
 	return findPiTerminal();
+}
+
+/** Returns true if the terminal is a Pi Agent terminal. */
+function isPiTerminal(terminal: vscode.Terminal): boolean {
+	return terminal.name === TERMINAL_NAME || terminal.name.startsWith(`${TERMINAL_NAME} `);
+}
+
+/**
+ * Register a newly spawned Pi terminal in the tracking maps.
+ * Called by createPiTerminal wrapper in extension so the lifecycle
+ * listeners can look up the terminal's id from a WeakMap.
+ */
+export function registerPiTerminal(
+	terminal: vscode.Terminal,
+	terminalId: string,
+): void {
+	terminalMap.set(terminalId, terminal);
+	terminalIdMap.set(terminal, terminalId);
+	// Cancel any pending grace-period removal for this id (restart scenario)
+	const existing = closeTimers.get(terminalId);
+	if (existing) {
+		clearTimeout(existing);
+		closeTimers.delete(terminalId);
+	}
+	if (bridge) {
+		upsertTabInExtension(terminalId, terminal);
+	}
+}
+
+/** Helper used by registerPiTerminal to upsert the tab in bridge state. */
+function upsertTabInExtension(terminalId: string, _terminal: vscode.Terminal): void {
+	if (!bridge) return;
+	const { upsertTab } = require("./bridge/state") as typeof import("./bridge/state");
+	upsertTab(bridge.state, terminalId, { agentState: "clear" });
+	controlView?.notifyTabsChanged(bridge.state.tabs.toArray(), bridge.state.currentTerminalId);
 }

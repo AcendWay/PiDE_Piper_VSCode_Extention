@@ -211,14 +211,14 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 
 	private async resume(filePath: string): Promise<void> {
 		if (!this.bridge) return;
-		const terminal = await createPiTerminal(
+		const res = await createPiTerminal(
 			this.bridge,
 			this.context.extensionUri,
 			{
 				sessionFile: filePath,
 			},
 		);
-		terminal?.show();
+		res?.terminal.show();
 	}
 
 	private async fork(filePath: string): Promise<void> {
@@ -234,14 +234,14 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 			vscode.window.showErrorMessage(`Pi: Could not fork session: ${e}`);
 			return;
 		}
-		const terminal = await createPiTerminal(
+		const forkRes = await createPiTerminal(
 			this.bridge,
 			this.context.extensionUri,
 			{
 				sessionFile: dest,
 			},
 		);
-		terminal?.show();
+		forkRes?.terminal.show();
 	}
 
 	private html(_webview: vscode.Webview): string {
