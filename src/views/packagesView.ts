@@ -1,41 +1,46 @@
 import * as crypto from "node:crypto";
 import * as vscode from "vscode";
 import type { Bridge } from "../bridge/server";
+import { PackageManager } from "../packages";
 
 export class PackagesViewProvider implements vscode.WebviewViewProvider {
 	static readonly viewType = "piSidebar.packages";
+	private readonly pkgManager = new PackageManager();
 
 	constructor(
 		private readonly _context: vscode.ExtensionContext,
-		private readonly bridge: Bridge,
-	) {
-		void this.bridge; // used in Phase 4 / #13 for install streaming
-	}
+		private readonly _bridge: Bridge,
+	) {}
+
+	dispose(): void { this.pkgManager.dispose(); }
 
 	resolveWebviewView(view: vscode.WebviewView): void {
 		view.webview.options = { enableScripts: true };
 		view.webview.html = this.html(view.webview);
 
+		const post = (msg: unknown) => void view.webview.postMessage(msg);
+
+		// Seed installed list on open
+		void this.pkgManager.refreshInstalled(post);
+
 		view.webview.onDidReceiveMessage(async (msg: { type: string; package?: string }) => {
 			switch (msg.type) {
 				case "install":
-					if (msg.package)
-						await vscode.commands.executeCommand(
-							"piSidebar.installPackage",
-							msg.package,
-							view.webview,
-						);
+					if (msg.package) await this.pkgManager.install(msg.package, post);
 					break;
 				case "uninstall":
-					if (msg.package)
-						await vscode.commands.executeCommand(
-							"piSidebar.uninstallPackage",
-							msg.package,
-							view.webview,
-						);
+					if (msg.package) await this.pkgManager.uninstall(msg.package, post);
+					break;
+				case "cancel":
+					this.pkgManager.cancel();
+					post({ type: "opEnd" });
 					break;
 				case "upgrade":
-					await vscode.commands.executeCommand("piSidebar.upgrade");
+					await this.pkgManager.upgrade();
+					void this.pkgManager.refreshInstalled(post);
+					break;
+				case "refresh":
+					void this.pkgManager.refreshInstalled(post);
 					break;
 			}
 		});
@@ -153,6 +158,28 @@ input.search:focus { border-color: var(--vscode-focusBorder); }
 .status { padding: 20px; text-align: center; color: var(--vscode-descriptionForeground); font-size: 12px; }
 .footer-link { padding: 6px 10px; text-align: right; font-size: 10px; flex-shrink: 0; }
 .footer-link a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+/* ── Op overlay ── */
+.op-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6); z-index: 100;
+  flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  padding: 16px;
+}
+.op-overlay.visible { display: flex; }
+.op-log {
+  width: 100%; max-height: 220px; overflow-y: auto;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-widget-border, transparent);
+  border-radius: 4px; padding: 8px;
+  font-size: 11px; font-family: var(--vscode-editor-font-family, monospace);
+  white-space: pre-wrap; word-break: break-all; color: var(--vscode-foreground);
+}
+.op-title { font-size: 12px; font-weight: 600; color: var(--vscode-foreground); }
+.cancel-btn {
+  padding: 4px 14px; background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  color: var(--vscode-foreground); border: none; border-radius: 3px;
+  cursor: pointer; font-size: 11px; font-family: inherit;
+}
 </style>
 </head>
 <body>
@@ -184,6 +211,11 @@ input.search:focus { border-color: var(--vscode-focusBorder); }
   <div class="status" id="loadingState">Loading packages…</div>
 </div>
 
+<div class="op-overlay" id="opOverlay">
+  <div class="op-title" id="opTitle">Working…</div>
+  <div class="op-log" id="opLog"></div>
+  <button class="cancel-btn" onclick="send('cancel')">Cancel</button>
+</div>
 <div class="footer-link">
   <a href="https://pi.dev/packages" target="_blank">Browse pi.dev/packages ↗</a>
 </div>
@@ -330,6 +362,18 @@ window.addEventListener('message', e => {
     installedSet = new Set(msg.packages || []);
     renderInstalled();
     renderPackages();
+  }
+  if (msg.type === 'opStart') {
+    document.getElementById('opLog').textContent = '';
+    document.getElementById('opOverlay').classList.add('visible');
+  }
+  if (msg.type === 'opOutput') {
+    const log = document.getElementById('opLog');
+    log.textContent += msg.text;
+    log.scrollTop = log.scrollHeight;
+  }
+  if (msg.type === 'opEnd') {
+    document.getElementById('opOverlay').classList.remove('visible');
   }
 });
 
