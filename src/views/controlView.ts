@@ -21,12 +21,7 @@ const MAX_RECENT = 5;
  * Falls back to a minimal hardcoded list if the file isn't found.
  */
 function getPiEnabledModels(): string[] {
-	const settingsPath = path.join(
-		os.homedir(),
-		".pi",
-		"agent",
-		"settings.json",
-	);
+	const settingsPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
 	try {
 		const raw = fs.readFileSync(settingsPath, "utf8");
 		const settings = JSON.parse(raw) as {
@@ -40,24 +35,14 @@ function getPiEnabledModels(): string[] {
 		// settings.json missing or malformed — fall through to defaults
 	}
 	// Minimal fallback when pi isn't configured yet
-	return [
-		"claude-sonnet-4.6",
-		"claude-opus-4.7",
-		"gemini-2.5-pro",
-		"gpt-4o",
-	];
+	return ["claude-sonnet-4.6", "claude-opus-4.7", "gemini-2.5-pro", "gpt-4o"];
 }
 
 /**
  * Read the default model pi is currently configured to use.
  */
 function getPiDefaultModel(): string {
-	const settingsPath = path.join(
-		os.homedir(),
-		".pi",
-		"agent",
-		"settings.json",
-	);
+	const settingsPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
 	try {
 		const raw = fs.readFileSync(settingsPath, "utf8");
 		const settings = JSON.parse(raw) as { defaultModel?: string };

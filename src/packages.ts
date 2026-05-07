@@ -85,27 +85,27 @@ export async function fetchNpmPackages(
 
 	const raw = await httpsGet(searchUrl);
 	const data = JSON.parse(raw) as {
-		objects: Array<{ package: {
-			name: string;
-			description?: string;
-			version?: string;
-			keywords?: string[];
-			publisher?: { username?: string };
-			author?: { name?: string };
-			links?: { npm?: string; repository?: string };
-		} }>;
+		objects: Array<{
+			package: {
+				name: string;
+				description?: string;
+				version?: string;
+				keywords?: string[];
+				publisher?: { username?: string };
+				author?: { name?: string };
+				links?: { npm?: string; repository?: string };
+			};
+		}>;
 	};
 
 	const packages: NpmPackage[] = (data.objects ?? []).map((o) => ({
 		name: o.package.name,
 		description: o.package.description ?? "",
 		version: o.package.version ?? "",
-		author:
-			o.package.publisher?.username ?? o.package.author?.name ?? "",
+		author: o.package.publisher?.username ?? o.package.author?.name ?? "",
 		keywords: (o.package.keywords ?? []).join(" "),
 		npm:
-			o.package.links?.npm ??
-			`https://www.npmjs.com/package/${o.package.name}`,
+			o.package.links?.npm ?? `https://www.npmjs.com/package/${o.package.name}`,
 		repo: o.package.links?.repository ?? "",
 		piLabels: [],
 		image: "",
@@ -153,8 +153,6 @@ export async function fetchNpmPackages(
 		onBatch(packages); // progressive update after each batch
 	}
 }
-
-
 
 // ── Package operations manager ────────────────────────────────────────────────
 

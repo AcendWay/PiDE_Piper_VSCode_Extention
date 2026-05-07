@@ -11,6 +11,7 @@ A native VS Code extension that integrates the [pi coding agent](https://pi.dev)
 Pi is a terminal-native AI coding agent. This extension keeps it close to VS Code without reimplementing the agent — pi's full TUI runs as a native terminal tab, while the sidebar gives you management and context tools that would otherwise require typing commands.
 
 The goal is a workflow where:
+
 - Pi always knows what file you're looking at, where your cursor is, and what errors exist
 - You can browse and install pi packages without leaving VS Code
 - Sessions survive VS Code restarts and can be resumed or forked from a visual history
@@ -22,6 +23,7 @@ The goal is a workflow where:
 ## Features
 
 ### Native Terminal Integration
+
 - Pi opens as a **native VS Code terminal** beside the editor — clipboard (`Ctrl+C/V/X`), text wrapping, scrollback, and font rendering all work exactly as in any other terminal
 - Pi terminal auto-detects your installed binary from `~/.bun/bin`, `~/.local/bin`, `~/.npm-global/bin`, and `$PATH`
 - Registers as a **terminal profile** so pi appears in the New Terminal dropdown
@@ -29,19 +31,22 @@ The goal is a workflow where:
 - WSL2 / Windows supported — spawns via `wsl.exe`, bridges across the host/WSL boundary
 
 ### Sidebar: Pi Agent (Control Panel)
+
 The main sidebar view. Always visible while you work:
 
-| Section | What it shows |
-|---|---|
-| **Status** | Running/stopped indicator + workspace name |
-| **Model** | Current model from your pi config; change with one click |
-| **Context Window** | Live progress bar: green → amber (75%) → red (90%) |
-| **Active File** | Current file, language, cursor position, unsaved dot, error/warning counts |
-| **Quick Actions** | Focus Terminal, Send Context, Review Diffs, New Session, Restart |
-| **Drop Zone** | Drag images for multimodal vision; drag files to send their path as context |
+| Section            | What it shows                                                               |
+| ------------------ | --------------------------------------------------------------------------- |
+| **Status**         | Running/stopped indicator + workspace name                                  |
+| **Model**          | Current model from your pi config; change with one click                    |
+| **Context Window** | Live progress bar: green → amber (75%) → red (90%)                          |
+| **Active File**    | Current file, language, cursor position, unsaved dot, error/warning counts  |
+| **Quick Actions**  | Focus Terminal, Send Context, Review Diffs, New Session, Restart            |
+| **Drop Zone**      | Drag images for multimodal vision; drag files to send their path as context |
 
 ### Sidebar: Sessions
+
 Visual history of all pi sessions across projects:
+
 - Date-grouped tree: **Today / Yesterday / This Week / Older**
 - Each session shows model used, message count, time ago, and first message preview
 - **Resume** — reopen the exact conversation in a new terminal
@@ -51,7 +56,9 @@ Visual history of all pi sessions across projects:
 - Search/filter by name, model, or project path
 
 ### Sidebar: Packages
+
 Browse and manage the entire pi package ecosystem without leaving VS Code:
+
 - Fetches the npm `pi-package` keyword registry (~250+ packages)
 - Filter by type: **Extensions / Skills / Prompts / Themes**
 - Shows capability labels, author, version, and media previews
@@ -60,9 +67,11 @@ Browse and manage the entire pi package ecosystem without leaving VS Code:
 - **Upgrade Pi & Packages** — upgrades the pi binary and all installed packages
 
 ### Bridge: 25+ VS Code Tools for Pi
+
 Pi gets full IDE awareness through a local HTTP bridge. Every tool is available in the pi session automatically:
 
 **Editor & workspace**
+
 - `vscode_context` / `vscode_get_editor_state` — full snapshot
 - `vscode_get_selection` / `vscode_get_latest_selection` — survives terminal focus
 - `vscode_get_open_editors`, `vscode_get_workspace_folders`
@@ -70,6 +79,7 @@ Pi gets full IDE awareness through a local HTTP bridge. Every tool is available 
 - `vscode_get_notifications` — poll buffered events (saves, editor switches, diagnostics)
 
 **LSP navigation**
+
 - `vscode_get_document_symbols` — file outline
 - `vscode_get_definitions`, `vscode_get_type_definitions`, `vscode_get_implementations`
 - `vscode_get_references` — all usages of a symbol
@@ -78,6 +88,7 @@ Pi gets full IDE awareness through a local HTTP bridge. Every tool is available 
 - `vscode_get_code_actions` — available quick fixes at a range
 
 **Actions**
+
 - `vscode_open_file` — open a file at a specific line/column
 - `vscode_show_diff` — diff viewer against HEAD or between two paths
 - `vscode_command` — execute any VS Code command by ID
@@ -116,30 +127,30 @@ After installing, **reload VS Code** (`Ctrl+Shift+P → Reload Window`). The π 
 
 ## Commands
 
-| Command | Keybinding | Description |
-|---|---|---|
-| **Pi: Open Terminal** | `Ctrl+Alt+P` | Open or focus the Pi terminal |
-| **Pi: Open with File Context** | Editor title bar icon | Send current file/cursor/selection context to pi |
-| **Pi: Send Active File/Selection Context** | Right-click menu | Send selected text or file info to pi |
-| **Pi: Review Git Diffs** | — | Ask pi to review current git changes |
-| **Pi: Select Model** | — | Quick Pick model selector (same list as sidebar) |
-| **Pi: New Session** | — | Open a fresh pi session |
-| **Pi: Restart Terminal** | — | Kill and reopen the pi terminal |
-| **Pi: Upgrade Pi and Packages** | — | Upgrade pi binary + `pi update` |
+| Command                                    | Keybinding            | Description                                      |
+| ------------------------------------------ | --------------------- | ------------------------------------------------ |
+| **Pi: Open Terminal**                      | `Ctrl+Alt+P`          | Open or focus the Pi terminal                    |
+| **Pi: Open with File Context**             | Editor title bar icon | Send current file/cursor/selection context to pi |
+| **Pi: Send Active File/Selection Context** | Right-click menu      | Send selected text or file info to pi            |
+| **Pi: Review Git Diffs**                   | —                     | Ask pi to review current git changes             |
+| **Pi: Select Model**                       | —                     | Quick Pick model selector (same list as sidebar) |
+| **Pi: New Session**                        | —                     | Open a fresh pi session                          |
+| **Pi: Restart Terminal**                   | —                     | Kill and reopen the pi terminal                  |
+| **Pi: Upgrade Pi and Packages**            | —                     | Upgrade pi binary + `pi update`                  |
 
 ---
 
 ## Settings
 
-| Setting | Default | Description |
-|---|---|---|
-| `piSidebar.piExecutable` | *(auto-detect)* | Override the pi binary path |
-| `piSidebar.terminalLocation` | `beside` | Where the terminal opens: `beside` / `panel` / `active` |
-| `piSidebar.defaultModel` | *(from pi config)* | Override the default model |
-| `piSidebar.startupArgs` | `[]` | Extra args passed to pi on start |
-| `piSidebar.initialPrompt` | *(VS Code context)* | System prompt prefix injected on session start |
-| `piSidebar.restoreSessions` | `true` | Auto-restore sessions when VS Code reloads |
-| `piSidebar.showOnStartup` | `true` | Reveal the sidebar when VS Code starts |
+| Setting                      | Default             | Description                                             |
+| ---------------------------- | ------------------- | ------------------------------------------------------- |
+| `piSidebar.piExecutable`     | _(auto-detect)_     | Override the pi binary path                             |
+| `piSidebar.terminalLocation` | `beside`            | Where the terminal opens: `beside` / `panel` / `active` |
+| `piSidebar.defaultModel`     | _(from pi config)_  | Override the default model                              |
+| `piSidebar.startupArgs`      | `[]`                | Extra args passed to pi on start                        |
+| `piSidebar.initialPrompt`    | _(VS Code context)_ | System prompt prefix injected on session start          |
+| `piSidebar.restoreSessions`  | `true`              | Auto-restore sessions when VS Code reloads              |
+| `piSidebar.showOnStartup`    | `true`              | Reveal the sidebar when VS Code starts                  |
 
 ---
 
