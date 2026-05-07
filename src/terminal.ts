@@ -150,10 +150,7 @@ export async function restartPiTerminal(
  * Send text to the running Pi terminal (if one exists).
  * @param addNewline - append \r to submit the input (default true)
  */
-export function sendTextToTerminal(
-	text: string,
-	addNewline = true,
-): boolean {
+export function sendTextToTerminal(text: string, addNewline = true): boolean {
 	const terminal = findPiTerminal();
 	if (!terminal) return false;
 	terminal.show(true);

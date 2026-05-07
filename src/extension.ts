@@ -1,7 +1,13 @@
 import * as vscode from "vscode";
 import { createBridge } from "./bridge/server";
 import type { Bridge } from "./bridge/server";
-import { clearPiBinaryCache, findPiBinary, IS_WIN, upgradePi, winToWslPath } from "./pi";
+import {
+	clearPiBinaryCache,
+	findPiBinary,
+	IS_WIN,
+	upgradePi,
+	winToWslPath,
+} from "./pi";
 import {
 	buildFileContextLines,
 	buildFileContextSummary,
@@ -68,18 +74,12 @@ export async function activate(
 			provideTerminalProfile() {
 				if (!bridge) return undefined;
 				const piPath = findPiBinary();
-				const workspaceCwd =
-					vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+				const workspaceCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 				// On Windows, pi lives in WSL2 — profile must use wsl.exe
 				// and the WSL-accessible bridge URL.
 				const shellPath = IS_WIN ? "wsl.exe" : piPath;
 				const shellArgs = IS_WIN
-					? [
-							"--cd",
-							winToWslPath(workspaceCwd ?? "/"),
-							"--",
-							piPath,
-					  ]
+					? ["--cd", winToWslPath(workspaceCwd ?? "/"), "--", piPath]
 					: undefined;
 				return new vscode.TerminalProfile({
 					name: "Pi Agent",
