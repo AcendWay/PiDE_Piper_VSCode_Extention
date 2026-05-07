@@ -41,6 +41,15 @@ This is open source and evolving fast. Contributions, ideas, and bug reports are
 
 ---
 
+## 📸 In Action
+
+<div align="center">
+  <img src="media/pied_piper_demo_screenshot1.png" alt="PiDE Piper in VS Code — sidebar, multi-tab agent control panel, and Pi terminal" width="100%" />
+  <sub>PiDE Piper running in VS Code — Pi Agent sidebar with multi-tab sessions, context window bar, packages panel, and live Pi terminal.</sub>
+</div>
+
+---
+
 ## ✨ Features
 
 ### 🖥️ Native Terminal Integration
