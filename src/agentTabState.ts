@@ -115,9 +115,7 @@ export class AgentTabStateMap {
 	}
 
 	/** Iterate in insertion order. */
-	forEach(
-		cb: (state: AgentTabState, terminalId: string) => void,
-	): void {
+	forEach(cb: (state: AgentTabState, terminalId: string) => void): void {
 		for (const id of this._insertionOrder) {
 			const tab = this._tabs.get(id);
 			if (tab) cb(tab, id);

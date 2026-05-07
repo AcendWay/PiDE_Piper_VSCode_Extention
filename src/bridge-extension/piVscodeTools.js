@@ -155,6 +155,60 @@ function startFooterPolling(pi) {
 	});
 }
 
+// ── Model switch polling ─────────────────────────────────────────────────────
+
+let _modelPollInterval = null;
+
+/**
+ * Poll getPendingModelSwitch every 2s. When a switch is queued by the
+ * sidebar, call pi.setModel(model) in-place, then report the result back.
+ * No-op if bridge env vars are absent.
+ */
+function startModelSwitchPolling(pi, terminalId) {
+	if (!process.env.PI_VSCODE_BRIDGE_URL || !process.env.PI_VSCODE_BRIDGE_TOKEN) return;
+	if (!terminalId) return;
+	if (_modelPollInterval) return;
+
+	_modelPollInterval = setInterval(async () => {
+		try {
+			const raw = await callVsCode("getPendingModelSwitch", { terminalId });
+			const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+			if (!data || !data.model) return;
+
+			const model = data.model;
+			let success = false;
+			try {
+				if (typeof pi.setModel === "function") {
+					const result = await pi.setModel(model);
+					success = result !== false;
+				}
+			} catch {
+				success = false;
+			}
+
+			// Report result back to the bridge (triggers onTabUpdated callback)
+			await callVsCode("reportModelChanged", { terminalId, model, success }).catch(() => {});
+
+			// If pi.setModel failed, inject the slash command as a fallback
+			if (!success && typeof pi.sendUserMessage === "function") {
+				try {
+					await pi.sendUserMessage(\`/model \${model}\`, { deliverAs: "followUp" });
+				} catch {
+					// best-effort
+				}
+			}
+		} catch {
+			// Bridge unavailable — stop silently
+			clearInterval(_modelPollInterval);
+			_modelPollInterval = null;
+		}
+	}, 2_000);
+
+	process.once("exit", () => {
+		if (_modelPollInterval) clearInterval(_modelPollInterval);
+	});
+}
+
 // ── Module export ─────────────────────────────────────────────────────────────
 
 module.exports = (pi) => {
@@ -576,9 +630,6 @@ module.exports = (pi) => {
 	});
 
 	// ── Session file reporting ────────────────────────────────────────────────
-	// pi exposes a hook for when the session file is determined. We use
-	// PI_VSCODE_TERMINAL_ID (set per-terminal by the extension) to correlate
-	// the terminal instance with its session file.
 	const terminalId = process.env.PI_VSCODE_TERMINAL_ID || "";
 	if (terminalId && typeof pi.onSessionFile === "function") {
 		pi.onSessionFile((sessionFile) => {
@@ -587,6 +638,22 @@ module.exports = (pi) => {
 			);
 		});
 	}
+
+	// ── Model switch polling ─────────────────────────────────────────────────
+	startModelSwitchPolling(pi, terminalId);
+
+	// ── Model selection reverse-sync ─────────────────────────────────────────
+	// When the user types /model in the TUI, notify the sidebar immediately.
+	pi.on("model_select", async (event) => {
+		if (!terminalId) return;
+		const modelName = event?.model?.id || event?.model?.name || String(event?.model ?? "");
+		if (!modelName) return;
+		await callVsCode("reportModelChanged", {
+			terminalId,
+			model: modelName,
+			success: true,
+		}).catch(() => {});
+	});
 
 	pi.registerTool({
 		name: "vscode_report_context_usage",

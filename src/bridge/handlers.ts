@@ -60,6 +60,43 @@ export async function handleBridgeAction(
 			return tid ? (state.tabs.get(tid) ?? null) : null;
 		}
 
+
+		// ── Model switch (pi polls these) ──────────────────────────────────
+		case "setModel": {
+			// Queue an in-place model switch for the pi-side to pick up.
+			// Returns immediately; pi polls getPendingModelSwitch every ~2s.
+			const tid = String(p.terminalId ?? "");
+			const model = String(p.model ?? "");
+			if (!tid || !model) return { ok: false, error: "terminalId and model required" };
+			if (!state.tabs.has(tid)) return { ok: false, error: "unknown terminalId" };
+			state.pendingModelSwitches.set(tid, model);
+			return { ok: true, queued: true, fallback: null };
+		}
+		case "getPendingModelSwitch": {
+			// Called by pi-side every ~2s. Returns and clears the pending model, if any.
+			const tid = String(p.terminalId ?? "");
+			if (!tid) return null;
+			const model = state.pendingModelSwitches.get(tid);
+			if (model) {
+				state.pendingModelSwitches.delete(tid);
+				return { model };
+			}
+			return null;
+		}
+		case "reportModelChanged": {
+			// Called by pi-side after pi.setModel() succeeds, or from model_select
+			// when the user types /model in the TUI.
+			const tid = String(p.terminalId ?? "");
+			const model = String(p.model ?? "");
+			const success = p.success !== false;
+			const usedFallback = !success;
+			if (tid && model) {
+				upsertTab(state, tid, { model });
+				// Pass fallback flag so extension can show the appropriate status bar msg
+				state.onTabUpdated?.(tid, usedFallback);
+			}
+			return { received: true, success };
+		}
 		// ── Session reporting ─────────────────────────────────────────────
 		case "reportTerminalSession": {
 			const terminalId = String(p.terminalId ?? "");

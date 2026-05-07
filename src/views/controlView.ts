@@ -8,7 +8,6 @@ import {
 	createPiTerminal,
 	findPiTerminal,
 	focusOrCreateTerminal,
-	restartPiTerminal,
 } from "../terminal";
 
 // ── Model lists ───────────────────────────────────────────────────────────────
@@ -234,27 +233,42 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	/** Persist model, update command palette, restart terminal. */
+	/**
+	 * Switch the active Pi session to a different model in-place.
+	 * No terminal restart. Queues a pending switch that pi polls every ~2s.
+	 * If no terminal is running, just persists the preference.
+	 */
 	async applyModel(model: string): Promise<void> {
 		if (!model) return;
-		const cfg = vscode.workspace.getConfiguration("piSidebar");
-		await cfg.update("defaultModel", model, vscode.ConfigurationTarget.Global);
 		await addRecentModel(this.context, model);
+		// Optimistic dropdown update — confirmed once bridge fires onTabUpdated
 		this.notifyModelChanged(model);
 
-		if (findPiTerminal()) {
-			await restartPiTerminal(this.bridge, this.context.extensionUri);
-			this.notifyTerminalState(true);
+		const currentId = this.bridge.state.currentTerminalId;
+		if (currentId && this.bridge.state.tabs.has(currentId)) {
+			// Live tracked terminal: queue in-place switch, pi picks it up in ~2s
+			this.bridge.state.pendingModelSwitches.set(currentId, model);
 			vscode.window.setStatusBarMessage(
-				`$(check) Pi model set to ${model} (terminal restarted)`,
+				`$(sync~spin) Switching Pi to ${model}…`,
+				4000,
+			);
+		} else if (findPiTerminal()) {
+			// Terminal exists but isn’t yet tracked (e.g. pre-activation terminal)
+			// Fall back to text injection
+			const t = findPiTerminal();
+			if (t) t.sendText(`/model ${model}`, true);
+			const cfg = vscode.workspace.getConfiguration("piSidebar");
+			await cfg.update("defaultModel", model, vscode.ConfigurationTarget.Global);
+			vscode.window.setStatusBarMessage(
+				`$(check) Pi model set to ${model}`,
 				4000,
 			);
 		} else {
-			// No live terminal — spin one up so the new model is actually used.
-			await createPiTerminal(this.bridge, this.context.extensionUri);
-			this.notifyTerminalState(true);
+			// No terminal — persist preference only, do not spawn
+			const cfg = vscode.workspace.getConfiguration("piSidebar");
+			await cfg.update("defaultModel", model, vscode.ConfigurationTarget.Global);
 			vscode.window.setStatusBarMessage(
-				`$(check) Pi started with ${model}`,
+				`$(check) Pi will use ${model} on next start`,
 				4000,
 			);
 		}

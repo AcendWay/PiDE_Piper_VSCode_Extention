@@ -26,7 +26,10 @@ export function setLastFocusedTerminalId(terminalId: string | undefined): void {
  */
 export function findAllPiTerminals(): vscode.Terminal[] {
 	return vscode.window.terminals.filter(
-		(t) => t.name === TERMINAL_NAME || t.name.startsWith(`${TERMINAL_NAME} ·`) || t.name.startsWith(`${TERMINAL_NAME} `),
+		(t) =>
+			t.name === TERMINAL_NAME ||
+			t.name.startsWith(`${TERMINAL_NAME} ·`) ||
+			t.name.startsWith(`${TERMINAL_NAME} `),
 	);
 }
 
@@ -130,7 +133,10 @@ export async function createPiTerminal(
 	}
 
 	const terminalId = options.terminalId ?? crypto.randomUUID();
-	const env = { ...buildPiEnv(bridgeConfig), PI_VSCODE_TERMINAL_ID: terminalId };
+	const env = {
+		...buildPiEnv(bridgeConfig),
+		PI_VSCODE_TERMINAL_ID: terminalId,
+	};
 
 	let shellPath: string;
 	let shellArgs: string[];

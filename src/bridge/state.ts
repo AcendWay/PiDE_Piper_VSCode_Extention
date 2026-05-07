@@ -12,6 +12,20 @@ export interface BridgeState {
 	currentTerminalId: string | null;
 
 	/**
+	 * Pending in-place model switches queued by the extension.
+	 * Key: terminalId  Value: model name to switch to.
+	 * Pi polls getPendingModelSwitch every ~2s and consumes entries.
+	 */
+	pendingModelSwitches: Map<string, string>;
+
+	/**
+	 * Callback fired whenever a tab's state is updated by a bridge action.
+	 * Registered by extension.ts to push live updates to the webview.
+	 * The second param is true when the model switch used the fallback (/model cmd).
+	 */
+	onTabUpdated?: (terminalId: string, modelFallback?: boolean) => void;
+
+	/**
 	 * Legacy singleton context usage — kept for backwards compat with pi-side
 	 * extensions that have not yet been updated to include terminalId.
 	 * New code reads from tabs.getCurrent()?.contextUsage instead.
@@ -37,6 +51,7 @@ export function createBridgeState(
 	return {
 		tabs: new AgentTabStateMap(),
 		currentTerminalId: null,
+		pendingModelSwitches: new Map(),
 		contextUsage: null,
 		latestSelection: null,
 		notifications: [],

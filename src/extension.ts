@@ -66,6 +66,38 @@ export async function activate(
 		modelsView?.notifyCurrentModel(model);
 	});
 
+	// ── Bridge onTabUpdated callback ───────────────────────────────────
+	// Fired from bridge handlers when a tab's state changes (e.g. model confirmed).
+	bridge.state.onTabUpdated = (terminalId, modelFallback) => {
+		const tab = bridge!.state.tabs.get(terminalId);
+		if (!tab) return;
+		// Push updated tab list to the webview
+		controlView?.notifyTabsChanged(
+			bridge!.state.tabs.toArray(),
+			bridge!.state.currentTerminalId,
+		);
+		// If model changed, persist setting and update dropdown
+		if (tab.model) {
+			controlView?.notifyModelChanged(tab.model);
+			vscode.workspace
+				.getConfiguration("piSidebar")
+				.update("defaultModel", tab.model, vscode.ConfigurationTarget.Global)
+				.then(undefined, (e) => console.error("Pi: failed to persist model", e));
+			if (modelFallback) {
+				// pi.setModel failed — fell back to /model slash command
+				vscode.window.setStatusBarMessage(
+					`$(warning) Pi: model switch fell back to /model ${tab.model}`,
+					4000,
+				);
+			} else {
+				vscode.window.setStatusBarMessage(
+					`$(check) Pi model switched to ${tab.model}`,
+					4000,
+				);
+			}
+		}
+	};
+
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(
 			ControlViewProvider.viewType,
@@ -164,7 +196,9 @@ export async function activate(
 			} else {
 				// No terminal — start fresh with file context in system prompt
 				const contextLines = buildFileContextLines();
-				const res2 = await createPiTerminal(bridge, context.extensionUri, { contextLines });
+				const res2 = await createPiTerminal(bridge, context.extensionUri, {
+					contextLines,
+				});
 				if (res2) registerPiTerminal(res2.terminal, res2.terminalId);
 			}
 		}),
@@ -197,7 +231,8 @@ export async function activate(
 		vscode.commands.registerCommand("piSidebar.restart", async () => {
 			if (!bridge) return;
 			const restartRes = await restartPiTerminal(bridge, context.extensionUri);
-			if (restartRes) registerPiTerminal(restartRes.terminal, restartRes.terminalId);
+			if (restartRes)
+				registerPiTerminal(restartRes.terminal, restartRes.terminalId);
 			// onDidOpenTerminal will flip the dot back to running — but if
 			// the close event is in flight, force a re-check too.
 			setTimeout(() => {
@@ -216,31 +251,33 @@ export async function activate(
 			if (!bridge) return;
 			const models = controlView?.buildQuickPickModels() ?? commonModels();
 			const model = await vscode.window.showQuickPick(models, {
-				placeHolder: "Select a model for Pi (will restart terminal)",
+				placeHolder: "Select a model for Pi (switches in-place, no restart)",
 			});
 			if (!model) return;
-			// applyModel is handled inside controlView; if the view isn't
-			// open we replicate the logic here.
+			// Always route through controlView.applyModel — same path as the dropdown
 			if (controlView) {
-				await (controlView as any).applyModel(model);
+				await (controlView as ControlViewProvider).applyModel(model);
 			} else {
-				const cfg = vscode.workspace.getConfiguration("piSidebar");
-				await cfg.update(
-					"defaultModel",
-					model,
-					vscode.ConfigurationTarget.Global,
-				);
-				const selRes = await restartPiTerminal(bridge, context.extensionUri);
-				if (selRes) registerPiTerminal(selRes.terminal, selRes.terminalId);
+				// View not open — queue via bridge state directly
+				const currentId = bridge.state.currentTerminalId;
+				if (currentId && bridge.state.tabs.has(currentId)) {
+					bridge.state.pendingModelSwitches.set(currentId, model);
+				} else {
+					const cfg = vscode.workspace.getConfiguration("piSidebar");
+					await cfg.update("defaultModel", model, vscode.ConfigurationTarget.Global);
+				}
 			}
 		}),
 
-		vscode.commands.registerCommand("piSidebar.focusTab", async (terminalId: string) => {
-			const terminal = terminalMap.get(terminalId);
-			if (terminal) {
-				terminal.show(true);
-			}
-		}),
+		vscode.commands.registerCommand(
+			"piSidebar.focusTab",
+			async (terminalId: string) => {
+				const terminal = terminalMap.get(terminalId);
+				if (terminal) {
+					terminal.show(true);
+				}
+			},
+		),
 
 		vscode.commands.registerCommand("piSidebar.upgrade", async () => {
 			await upgradePi();
@@ -279,7 +316,10 @@ export async function activate(
 					closeTimers.delete(tid);
 					terminalMap.delete(tid);
 					bridge!.state.tabs.remove(tid);
-					controlView?.notifyTabsChanged(bridge!.state.tabs.toArray(), bridge!.state.currentTerminalId);
+					controlView?.notifyTabsChanged(
+						bridge!.state.tabs.toArray(),
+						bridge!.state.currentTerminalId,
+					);
 				}, 30_000);
 				closeTimers.set(tid, timer);
 			}
@@ -297,7 +337,11 @@ export async function activate(
 			const tid = terminalIdMap.get(terminal);
 			if (tid && bridge) {
 				bridge.state.currentTerminalId = tid;
-				try { bridge.state.tabs.setCurrent(tid); } catch { /* tab may not exist yet */ }
+				try {
+					bridge.state.tabs.setCurrent(tid);
+				} catch {
+					/* tab may not exist yet */
+				}
 				setLastFocusedTerminalId(tid);
 				controlView?.notifyTabsChanged(bridge.state.tabs.toArray(), tid);
 			}
@@ -427,7 +471,10 @@ export function getActivePiTerminal(): vscode.Terminal | undefined {
 
 /** Returns true if the terminal is a Pi Agent terminal. */
 function isPiTerminal(terminal: vscode.Terminal): boolean {
-	return terminal.name === TERMINAL_NAME || terminal.name.startsWith(`${TERMINAL_NAME} `);
+	return (
+		terminal.name === TERMINAL_NAME ||
+		terminal.name.startsWith(`${TERMINAL_NAME} `)
+	);
 }
 
 /**
@@ -453,9 +500,16 @@ export function registerPiTerminal(
 }
 
 /** Helper used by registerPiTerminal to upsert the tab in bridge state. */
-function upsertTabInExtension(terminalId: string, _terminal: vscode.Terminal): void {
+function upsertTabInExtension(
+	terminalId: string,
+	_terminal: vscode.Terminal,
+): void {
 	if (!bridge) return;
-	const { upsertTab } = require("./bridge/state") as typeof import("./bridge/state");
+	const { upsertTab } =
+		require("./bridge/state") as typeof import("./bridge/state");
 	upsertTab(bridge.state, terminalId, { agentState: "clear" });
-	controlView?.notifyTabsChanged(bridge.state.tabs.toArray(), bridge.state.currentTerminalId);
+	controlView?.notifyTabsChanged(
+		bridge.state.tabs.toArray(),
+		bridge.state.currentTerminalId,
+	);
 }
