@@ -117,12 +117,14 @@ Current file path, language, cursor line/column, unsaved indicator, and live err
 
 ---
 
-### 📂 Sidebar: Drop Context
+### 📂 Sidebar: File to Context ⚠️ *(Work in Progress)*
+
+> **Note:** This panel is currently non-functional and under active development. The UI is present but file/image injection into Pi is not yet wired up end-to-end.
 
 A dedicated view for getting content into Pi — clean and focused, no clutter in the main panel.
 
-- **Drop zone** — drag images for multimodal analysis; drag files to send their path as context
-- **Send Active Selection** — one-click to send what you've highlighted in the editor
+- **Drop zone** — *(coming soon)* drag images for multimodal analysis; drag files to send their path as context
+- **Send Active Selection** — *(coming soon)* one-click to send what you've highlighted in the editor
 
 ---
 
@@ -364,7 +366,7 @@ On **Windows with WSL2**, the bridge binds to `0.0.0.0` and Pi uses the Windows 
 - [ ] **Multi-root workspaces** — project cost currently keys off `workspaceFolders[0]`
 - [ ] **Cross-workspace cost dashboard** — per-workspace totals exist; a unified view is future work
 - [ ] **MCP-source tagging** — MCP tool tokens roll into "Tool I/O" until pi exposes an MCP-source distinction
-- [x] ~~Drop zone in Pi Agent panel~~ → moved to its own **Drop Context** view
+- [x] ~~Drop zone in Pi Agent panel~~ → moved to its own **File to Context** view *(work in progress)*
 - [x] ~~Single-terminal assumption~~ → full multi-tab support
 - [x] ~~Model switch kills terminal~~ → live in-place switching
 
