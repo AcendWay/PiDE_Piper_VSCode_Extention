@@ -387,6 +387,12 @@ export async function activate(
 			if (e.affectsConfiguration("piSidebar.piExecutable")) {
 				clearPiBinaryCache();
 			}
+			if (e.affectsConfiguration("piSidebar.showCost")) {
+				const showCost = vscode.workspace
+					.getConfiguration("piSidebar")
+					.get<boolean>("showCost", true);
+				controlView?.notifyShowCostChanged(showCost);
+			}
 		}),
 	);
 

@@ -74,6 +74,19 @@ function startEventBridge(callVsCode, pi, terminalId) {
 	// ── Title tracking ────────────────────────────────────────────────────
 	let _firstUserMessage = null; // captured from first turn_start
 	let _titleSet = false;        // whether OSC 2 has been emitted yet
+	let _systemPromptOptions = null; // captured from before_agent_start
+	let _systemPrompt = '';          // captured from before_agent_start
+	let _contextWindow = 0;          // active model context window
+
+	pi.on("before_agent_start", async (event) => {
+		if (event) {
+			_systemPromptOptions = event.systemPromptOptions || null;
+			_systemPrompt = event.systemPrompt || '';
+			if (event.model && event.model.contextWindow) {
+				_contextWindow = event.model.contextWindow;
+			}
+		}
+	});
 
 	pi.on("turn_start", (event) => {
 		if (!_firstUserMessage && event && event.prompt) {
@@ -99,6 +112,40 @@ function startEventBridge(callVsCode, pi, terminalId) {
 			process.stdout.write("\x1b]2;" + label + "\x07");
 			// Mirror to bridge so the mini-tab-strip stays in sync
 			callVsCode("reportTerminalTitle", { terminalId, title: label }).catch(() => {});
+		}
+	});
+
+	// ── Context breakdown after each assistant message ────────────────────
+	pi.on("message_end", async (event, ctx) => {
+		// Only recompute after assistant messages (which carry usage data)
+		if (!event?.message || event.message.role !== "assistant") return;
+		try {
+			const entries = ctx.sessionManager?.getBranch?.() || [];
+			const lastUsage = event.message.usage || null;
+			const cw = _contextWindow || ctx.getContextUsage?.()?.contextWindow || 0;
+
+			const result = contextBreakdown({
+				entries,
+				systemPromptOptions: _systemPromptOptions,
+				systemPrompt: _systemPrompt,
+				lastUsage,
+				contextWindow: cw,
+			});
+
+			// Report context breakdown
+			await callVsCode("reportContextBreakdown", {
+				terminalId,
+				breakdown: result,
+			}).catch(() => {});
+
+			// Report cost
+			await callVsCode("reportCost", {
+				terminalId,
+				sessionCost: result.sessionCost,
+				lastDelta: result.lastDelta,
+			}).catch(() => {});
+		} catch {
+			// Breakdown failed — skip silently
 		}
 	});
 
@@ -132,5 +179,7 @@ function startEventBridge(callVsCode, pi, terminalId) {
 		if (_confirmTimer) clearTimeout(_confirmTimer);
 	});
 }
+
+const { contextBreakdown } = require('./contextBreakdown');
 
 module.exports = { startEventBridge };

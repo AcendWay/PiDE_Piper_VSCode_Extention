@@ -25,9 +25,35 @@ export interface AgentTabState {
 	since: string;
 	/** Tab index (0-based insertion order, used for palette color). */
 	index: number;
-	// Placeholders for later slices — null until populated
-	breakdown: null;
-	cost: null;
+	// ── Breakdown (Slice 7 / #22) ──────────────────────────────────────────
+	breakdown?: ContextBreakdown | null;
+	cost?: SessionCost | null;
+}
+
+// ── Breakdown types ──────────────────────────────────────────────────────────
+
+export interface ContextBreakdown {
+	schemeA: {
+		systemTokens: number;
+		conversationTokens: number;
+		toolIoTokens: number;
+		cacheTokens: number;
+	};
+	schemeB: {
+		systemCore: number;
+		contextFiles: number;
+		skills: number;
+		user: number;
+		assistant: number;
+		toolIo: number;
+	};
+	totalTokens: number;
+	contextWindow: number;
+}
+
+export interface SessionCost {
+	sessionCost: number;
+	lastDelta: number;
 }
 
 // ── Container ─────────────────────────────────────────────────────────────────
@@ -65,8 +91,8 @@ export class AgentTabStateMap {
 			agentState: partial.agentState ?? "clear",
 			since: partial.since ?? new Date().toISOString(),
 			index: this._insertionOrder.length,
-			breakdown: null,
-			cost: null,
+			breakdown: partial.breakdown ?? null,
+			cost: partial.cost ?? null,
 		};
 		this._tabs.set(terminalId, entry);
 		this._insertionOrder.push(terminalId);

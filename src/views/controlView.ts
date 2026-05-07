@@ -145,7 +145,20 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 	): void {
 		this.tabs = tabs;
 		this.currentTerminalId = currentTerminalId;
-		this.post({ type: "tabsChanged", tabs: tabs.map(serializeTab), currentTerminalId });
+		const current = currentTerminalId
+			? tabs.find((t) => t.terminalId === currentTerminalId)
+			: undefined;
+		this.post({
+			type: "tabsChanged",
+			tabs: tabs.map(serializeTab),
+			currentTerminalId,
+			activeTabBreakdown: current?.breakdown ?? null,
+			activeTabCost: current?.cost ?? null,
+		});
+	}
+
+	notifyShowCostChanged(showCost: boolean): void {
+		this.post({ type: "showCostChanged", showCost });
 	}
 
 	notifyFileStatus(status: FileStatus | null): void {
@@ -217,6 +230,11 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 			case "ready": {
 				// Webview reloaded — push current state
 				this.post({ type: "terminalState", running: this.terminalRunning });
+				// showCost setting
+				const showCost = vscode.workspace
+					.getConfiguration("piSidebar")
+					.get<boolean>("showCost", true);
+				this.post({ type: "showCostChanged", showCost });
 				const usage = this.bridge.state.contextUsage;
 				if (usage)
 					this.post({
@@ -224,12 +242,11 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 						used: usage.used,
 						total: usage.total,
 					});
-				// Push current tabs
-				this.post({
-					type: "tabsChanged",
-					tabs: this.tabs.map(serializeTab),
-					currentTerminalId: this.currentTerminalId,
-				});
+				// Push current tabs (with active breakdown/cost via notifyTabsChanged shape)
+				this.notifyTabsChanged(
+					this.bridge.state.tabs.toArray(),
+					this.bridge.state.currentTerminalId,
+				);
 				break;
 			}
 		}
@@ -451,33 +468,68 @@ select:focus { border-color: var(--vscode-focusBorder); }
 .view-all-btn:hover { background: var(--vscode-toolbar-hoverBackground); text-decoration: underline; }
 
 /* ── Context window ── */
-.ctx-bar-wrap {
+.ctx-bar-wrap { display: flex; flex-direction: column; gap: 4px; }
+.ctx-header-row {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
 .ctx-bar-track {
-  height: 6px;
-  background: var(--vscode-progressBar-background, rgba(128,128,128,0.2));
+  flex: 1;
+  height: 8px;
+  background: var(--vscode-progressBar-background, rgba(128,128,128,0.18));
   border-radius: 4px;
   overflow: hidden;
+  position: relative;
+  cursor: pointer;
 }
-.ctx-bar-fill {
+.ctx-seg {
+  position: absolute;
   height: 100%;
-  border-radius: 4px;
-  background: var(--vscode-testing-iconPassed, #89d185);
-  transition: width 0.4s ease, background 0.4s ease;
-  width: 0%;
+  top: 0;
+  transition: width 0.4s ease, left 0.4s ease;
 }
-.ctx-bar-fill.amber { background: #e5a731; }
-.ctx-bar-fill.red   { background: var(--vscode-testing-iconFailed, #f44747); }
-.ctx-label {
+.ctx-seg.system      { background: var(--vscode-terminal-ansiBlue, #569cd6); }
+.ctx-seg.conversation { background: var(--vscode-testing-iconPassed, #89d185); }
+.ctx-seg.toolio      { background: var(--vscode-terminal-ansiMagenta, #c586c0); }
+.ctx-seg.cache       {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(86,205,212,0.35) 0px, rgba(86,205,212,0.35) 3px,
+    transparent 3px, transparent 6px
+  );
+  pointer-events: none;
+}
+/* Amber/red tints at 75% / 90% — applied to conversation + toolio segments */
+.ctx-bar-track.amber .ctx-seg.conversation { background: #e5a731; }
+.ctx-bar-track.amber .ctx-seg.toolio       { background: #c88a20; }
+.ctx-bar-track.red   .ctx-seg.conversation { background: var(--vscode-testing-iconFailed, #f44747); }
+.ctx-bar-track.red   .ctx-seg.toolio       { background: #c73232; }
+
+.ctx-readout {
   font-size: 10px;
+  white-space: nowrap;
   color: var(--vscode-descriptionForeground);
-  display: flex;
-  justify-content: space-between;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
-.ctx-label.hidden { display: none; }
+
+/* Tooltip */
+.ctx-tooltip {
+  font-size: 10px;
+  background: var(--vscode-editorHoverWidget-background, #2d2d2d);
+  border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: var(--vscode-foreground);
+  line-height: 1.6;
+  display: none;
+}
+.ctx-tooltip.visible { display: block; }
+.ctx-tooltip-row { display: flex; justify-content: space-between; gap: 12px; }
+.ctx-tooltip-label { color: var(--vscode-descriptionForeground); }
+.ctx-tooltip-val   { font-variant-numeric: tabular-nums; }
 
 /* ── File status ── */
 .file-row {
@@ -589,12 +641,23 @@ button.action:disabled { opacity: 0.38; cursor: default; }
 <div class="section">
   <div class="section-label">Context Window</div>
   <div class="ctx-bar-wrap">
-    <div class="ctx-bar-track">
-      <div class="ctx-bar-fill" id="ctxFill"></div>
+    <div class="ctx-header-row">
+      <div class="ctx-bar-track" id="ctxTrack" title="">
+        <div class="ctx-seg system"       id="ctxSegSystem"></div>
+        <div class="ctx-seg conversation" id="ctxSegConv"></div>
+        <div class="ctx-seg toolio"       id="ctxSegTool"></div>
+        <div class="ctx-seg cache"        id="ctxSegCache"></div>
+      </div>
+      <div class="ctx-readout" id="ctxReadout">— / —</div>
     </div>
-    <div class="ctx-label hidden" id="ctxLabel">
-      <span id="ctxUsed">—</span>
-      <span id="ctxPct">—</span>
+    <div class="ctx-tooltip" id="ctxTooltip">
+      <div class="ctx-tooltip-row"><span class="ctx-tooltip-label">System core</span><span class="ctx-tooltip-val" id="tipSysCore">0</span></div>
+      <div class="ctx-tooltip-row"><span class="ctx-tooltip-label">Context files</span><span class="ctx-tooltip-val" id="tipCtxFiles">0</span></div>
+      <div class="ctx-tooltip-row"><span class="ctx-tooltip-label">Skills / prompts</span><span class="ctx-tooltip-val" id="tipSkills">0</span></div>
+      <div class="ctx-tooltip-row"><span class="ctx-tooltip-label">User</span><span class="ctx-tooltip-val" id="tipUser">0</span></div>
+      <div class="ctx-tooltip-row"><span class="ctx-tooltip-label">Assistant</span><span class="ctx-tooltip-val" id="tipAsst">0</span></div>
+      <div class="ctx-tooltip-row"><span class="ctx-tooltip-label">Tool I/O</span><span class="ctx-tooltip-val" id="tipTool">0</span></div>
+      <div class="ctx-tooltip-row"><span class="ctx-tooltip-label">Cache (overlay)</span><span class="ctx-tooltip-val" id="tipCache">0</span></div>
     </div>
   </div>
 </div>
@@ -660,28 +723,105 @@ viewAllBtn.addEventListener('click', () => {
   viewAllBtn.textContent = allModelsVisible ? '▴ less' : '▾ more';
 });
 
-// Context bar
-function updateContextBar(used, total, reset) {
-  const fill = document.getElementById('ctxFill');
-  const label = document.getElementById('ctxLabel');
-  const usedEl = document.getElementById('ctxUsed');
-  const pctEl = document.getElementById('ctxPct');
+// ── Context bar ─────────────────────────────────────────────────────
+let _showCost = true;
+let _lastBreakdown = null;
+let _lastCost = null;
 
+function fmtTokens(n) {
+  if (!n) return '0';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return String(n);
+}
+
+function fmtCost(c) {
+  if (!c || c < 0.01) return '$' + (c || 0).toFixed(3);
+  return '$' + c.toFixed(2);
+}
+
+function setSegment(id, leftPct, widthPct) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.left = leftPct + '%';
+  el.style.width = widthPct + '%';
+}
+
+function updateContextBar(used, total, reset) {
+  // Legacy shape (used/total only). Used as a fallback when no breakdown.
+  const track = document.getElementById('ctxTrack');
+  const readout = document.getElementById('ctxReadout');
   if (reset || !total) {
-    fill.style.width = '0%';
-    fill.className = 'ctx-bar-fill';
-    label.className = 'ctx-label hidden';
+    setSegment('ctxSegSystem', 0, 0);
+    setSegment('ctxSegConv', 0, 0);
+    setSegment('ctxSegTool', 0, 0);
+    setSegment('ctxSegCache', 0, 0);
+    track.className = 'ctx-bar-track';
+    readout.textContent = '— / —';
     return;
   }
+  const pct = Math.min(100, (used / total) * 100);
+  // Single green segment when no breakdown is available
+  setSegment('ctxSegSystem', 0, 0);
+  setSegment('ctxSegConv', 0, pct);
+  setSegment('ctxSegTool', 0, 0);
+  setSegment('ctxSegCache', 0, 0);
+  track.className = 'ctx-bar-track' + (pct >= 90 ? ' red' : pct >= 75 ? ' amber' : '');
+  readout.textContent = fmtTokens(used) + ' / ' + fmtTokens(total) + ' · ' + pct.toFixed(1) + '%';
+}
 
-  const pct = Math.min(100, Math.round((used / total) * 100));
-  fill.style.width = pct + '%';
-  fill.className = 'ctx-bar-fill' + (pct >= 90 ? ' red' : pct >= 75 ? ' amber' : '');
-  label.className = 'ctx-label';
-  const usedK = (used / 1000).toFixed(1);
-  const totalK = (total / 1000).toFixed(0);
-  usedEl.textContent = usedK + 'k / ' + totalK + 'k';
-  pctEl.textContent = pct + '%';
+function updateBreakdown(breakdown, cost) {
+  _lastBreakdown = breakdown;
+  _lastCost = cost;
+  const track = document.getElementById('ctxTrack');
+  const readout = document.getElementById('ctxReadout');
+  if (!breakdown || !breakdown.contextWindow) {
+    updateContextBar(0, 0, true);
+    return;
+  }
+  const total = breakdown.contextWindow;
+  const a = breakdown.schemeA || {};
+  const sysW = (a.systemTokens || 0) / total * 100;
+  const convW = (a.conversationTokens || 0) / total * 100;
+  const toolW = (a.toolIoTokens || 0) / total * 100;
+  const cacheW = (a.cacheTokens || 0) / total * 100;
+
+  setSegment('ctxSegSystem', 0, sysW);
+  setSegment('ctxSegConv', sysW, convW);
+  setSegment('ctxSegTool', sysW + convW, toolW);
+  // Cache overlays from 0 (translucent stripes layered on top)
+  setSegment('ctxSegCache', 0, cacheW);
+
+  const usedPct = Math.min(100, (breakdown.totalTokens / total) * 100);
+  track.className = 'ctx-bar-track' + (usedPct >= 90 ? ' red' : usedPct >= 75 ? ' amber' : '');
+
+  let line = fmtTokens(breakdown.totalTokens) + ' / ' + fmtTokens(total) + ' · ' + usedPct.toFixed(1) + '%';
+  const sc = cost?.sessionCost || 0;
+  if (_showCost && sc > 0) line += ' · ' + fmtCost(sc);
+  readout.textContent = line;
+
+  // Update tooltip values (Scheme B)
+  const b = breakdown.schemeB || {};
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = fmtTokens(v); };
+  set('tipSysCore', b.systemCore || 0);
+  set('tipCtxFiles', b.contextFiles || 0);
+  set('tipSkills', b.skills || 0);
+  set('tipUser', b.user || 0);
+  set('tipAsst', b.assistant || 0);
+  set('tipTool', b.toolIo || 0);
+  set('tipCache', a.cacheTokens || 0);
+}
+
+// Tooltip toggle on hover
+const ctxTrack = document.getElementById('ctxTrack');
+const ctxTooltip = document.getElementById('ctxTooltip');
+if (ctxTrack && ctxTooltip) {
+  ctxTrack.addEventListener('mouseenter', () => {
+    if (_lastBreakdown) ctxTooltip.classList.add('visible');
+  });
+  ctxTrack.addEventListener('mouseleave', () => {
+    ctxTooltip.classList.remove('visible');
+  });
 }
 
 // File status row
@@ -768,9 +908,17 @@ window.addEventListener('message', e => {
   switch (msg.type) {
     case 'terminalState': updateTerminalState(msg.running); break;
     case 'contextUsage':  updateContextBar(msg.used, msg.total, msg.reset); break;
+    case 'breakdown':     updateBreakdown(msg.breakdown, msg.cost); break;
     case 'fileStatus':    updateFileRow(msg.status); break;
     case 'modelChanged':  updateModel(msg.model); break;
-    case 'tabsChanged':   renderTabStrip(msg.tabs, msg.currentTerminalId); break;
+    case 'tabsChanged':
+      renderTabStrip(msg.tabs, msg.currentTerminalId);
+      // Repaint context bar against current tab's breakdown
+      if (msg.activeTabBreakdown !== undefined) {
+        updateBreakdown(msg.activeTabBreakdown, msg.activeTabCost);
+      }
+      break;
+    case 'showCostChanged': _showCost = msg.showCost; if (_lastBreakdown) updateBreakdown(_lastBreakdown, _lastCost); break;
   }
 });
 

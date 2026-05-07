@@ -120,6 +120,32 @@ export async function handleBridgeAction(
 			}
 			return { received: true };
 		}
+		case "reportContextBreakdown": {
+			const bdTid = String(p.terminalId ?? "");
+			if (bdTid) {
+				const bd = p.breakdown as import("../agentTabState").ContextBreakdown | undefined;
+				if (bd) {
+					upsertTab(state, bdTid, { breakdown: bd });
+					// Keep legacy singleton in sync
+					if (bd.totalTokens && bd.contextWindow) {
+						state.contextUsage = { used: bd.totalTokens, total: bd.contextWindow };
+					}
+				}
+				state.onTabUpdated?.(bdTid);
+			}
+			return { received: true };
+		}
+		case "reportCost": {
+			const costTid = String(p.terminalId ?? "");
+			const sessionCost = Number(p.sessionCost ?? 0);
+			const lastDelta = Number(p.lastDelta ?? 0);
+			if (costTid) {
+				upsertTab(state, costTid, { cost: { sessionCost, lastDelta } });
+				state.onTabUpdated?.(costTid);
+			}
+			return { received: true };
+		}
+
 
 		case "reportTerminalSession": {
 			const terminalId = String(p.terminalId ?? "");

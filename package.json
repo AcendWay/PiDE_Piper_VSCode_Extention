@@ -208,6 +208,11 @@
           "items": { "type": "string" },
           "default": ["terminal.ansiCyan","terminal.ansiMagenta","terminal.ansiYellow","terminal.ansiBlue","terminal.ansiGreenBright","terminal.ansiRedBright"],
           "description": "VS Code theme color IDs cycled for Pi Agent tabs 2, 3, 4... Tab 1 always uses the default terminal color."
+        },
+        "piSidebar.showCost": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show running session cost ($) on the right side of the context window bar. Hidden when false or when the active model has zero-cost rates."
         }
       }
     }
