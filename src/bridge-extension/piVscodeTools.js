@@ -11,8 +11,6 @@
  * All positions (line, character) are 1-based in this API.
  */
 
-
-
 const http = require("node:http");
 const https = require("node:https");
 const { Type } = require("typebox");
@@ -35,7 +33,11 @@ function callVsCode(action, payload) {
 		const req = lib.request(
 			{
 				hostname: url.hostname,
-				port: url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80,
+				port: url.port
+					? Number(url.port)
+					: url.protocol === "https:"
+						? 443
+						: 80,
 				path: url.pathname,
 				method: "POST",
 				headers: {
@@ -168,7 +170,9 @@ module.exports = (pi) => {
 		description:
 			"Get active workspace, active editor, selected text, visible editors, optional diagnostics and git diff from VS Code.",
 		parameters: Type.Object({
-			includeDiff: Type.Optional(Type.Boolean({ description: "Include git diff summary" })),
+			includeDiff: Type.Optional(
+				Type.Boolean({ description: "Include git diff summary" }),
+			),
 			includeDiagnostics: Type.Optional(
 				Type.Boolean({ description: "Include workspace diagnostics" }),
 			),
@@ -181,7 +185,8 @@ module.exports = (pi) => {
 	pi.registerTool({
 		name: "vscode_open_file",
 		label: "VS Code Open File",
-		description: "Open a file in VS Code, optionally revealing a specific line and column.",
+		description:
+			"Open a file in VS Code, optionally revealing a specific line and column.",
 		parameters: Type.Object({
 			path: FilePathParam,
 			line: Type.Optional(LineParam),
@@ -195,11 +200,16 @@ module.exports = (pi) => {
 	pi.registerTool({
 		name: "vscode_show_diff",
 		label: "VS Code Diff",
-		description: "Open VS Code diff viewer for a file against HEAD, or between two explicit paths.",
+		description:
+			"Open VS Code diff viewer for a file against HEAD, or between two explicit paths.",
 		parameters: Type.Object({
 			path: Type.Optional(FilePathParam),
-			left: Type.Optional(Type.String({ description: "Left file URI or path" })),
-			right: Type.Optional(Type.String({ description: "Right file URI or path" })),
+			left: Type.Optional(
+				Type.String({ description: "Left file URI or path" }),
+			),
+			right: Type.Optional(
+				Type.String({ description: "Right file URI or path" }),
+			),
 			title: Type.Optional(Type.String()),
 		}),
 		async execute(_id, params) {
@@ -213,8 +223,12 @@ module.exports = (pi) => {
 		description:
 			"Execute any VS Code command by ID. Use with care — commands can modify editor state.",
 		parameters: Type.Object({
-			command: Type.String({ description: "VS Code command ID, e.g. editor.action.rename" }),
-			argsJson: Type.Optional(Type.String({ description: "JSON array of command arguments" })),
+			command: Type.String({
+				description: "VS Code command ID, e.g. editor.action.rename",
+			}),
+			argsJson: Type.Optional(
+				Type.String({ description: "JSON array of command arguments" }),
+			),
 		}),
 		async execute(_id, params) {
 			return textResult(await callVsCode("command", params));
@@ -275,7 +289,8 @@ module.exports = (pi) => {
 	pi.registerTool({
 		name: "vscode_get_workspace_folders",
 		label: "VS Code Workspace Folders",
-		description: "List all workspace folders open in the current VS Code window.",
+		description:
+			"List all workspace folders open in the current VS Code window.",
 		parameters: Type.Object({}),
 		async execute(_id, _params) {
 			return textResult(await callVsCode("getWorkspaceFolders", {}));
@@ -319,7 +334,8 @@ module.exports = (pi) => {
 	pi.registerTool({
 		name: "vscode_get_definitions",
 		label: "VS Code Go to Definition",
-		description: "Get definition location(s) for the symbol at a given file position.",
+		description:
+			"Get definition location(s) for the symbol at a given file position.",
 		parameters: Type.Object({
 			filePath: FilePathParam,
 			line: LineParam,
@@ -333,7 +349,8 @@ module.exports = (pi) => {
 	pi.registerTool({
 		name: "vscode_get_type_definitions",
 		label: "VS Code Type Definition",
-		description: "Get type definition location(s) for the symbol at a given file position.",
+		description:
+			"Get type definition location(s) for the symbol at a given file position.",
 		parameters: Type.Object({
 			filePath: FilePathParam,
 			line: LineParam,
@@ -369,7 +386,8 @@ module.exports = (pi) => {
 			character: CharacterParam,
 			includeDeclaration: Type.Optional(
 				Type.Boolean({
-					description: "Include the declaration itself in results (default true)",
+					description:
+						"Include the declaration itself in results (default true)",
 				}),
 			),
 		}),
@@ -399,7 +417,9 @@ module.exports = (pi) => {
 		description:
 			"Search for symbols across the entire workspace by name. Returns up to 100 results.",
 		parameters: Type.Object({
-			query: Type.String({ description: "Symbol name or prefix to search for" }),
+			query: Type.String({
+				description: "Symbol name or prefix to search for",
+			}),
 		}),
 		async execute(_id, params) {
 			return textResult(await callVsCode("getWorkspaceSymbols", params));
@@ -444,7 +464,9 @@ module.exports = (pi) => {
 		parameters: Type.Object({
 			edits: Type.Array(
 				Type.Object({
-					uri: Type.String({ description: "Workspace-relative or absolute file path" }),
+					uri: Type.String({
+						description: "Workspace-relative or absolute file path",
+					}),
 					range: Type.Optional(RangeParam),
 					newText: Type.Optional(
 						Type.String({ description: "Replacement text (use with range)" }),
@@ -467,9 +489,13 @@ module.exports = (pi) => {
 		description: "Format an entire file using the active language formatter.",
 		parameters: Type.Object({
 			filePath: FilePathParam,
-			tabSize: Type.Optional(Type.Number({ description: "Tab size (default 2)" })),
+			tabSize: Type.Optional(
+				Type.Number({ description: "Tab size (default 2)" }),
+			),
 			insertSpaces: Type.Optional(
-				Type.Boolean({ description: "Use spaces instead of tabs (default true)" }),
+				Type.Boolean({
+					description: "Use spaces instead of tabs (default true)",
+				}),
 			),
 		}),
 		async execute(_id, params) {
@@ -480,12 +506,17 @@ module.exports = (pi) => {
 	pi.registerTool({
 		name: "vscode_format_range",
 		label: "VS Code Format Range",
-		description: "Format a selection/range within a file using the active language formatter.",
+		description:
+			"Format a selection/range within a file using the active language formatter.",
 		parameters: Type.Object({
 			filePath: FilePathParam,
 			range: RangeParam,
-			tabSize: Type.Optional(Type.Number({ description: "Tab size (default 2)" })),
-			insertSpaces: Type.Optional(Type.Boolean({ description: "Use spaces (default true)" })),
+			tabSize: Type.Optional(
+				Type.Number({ description: "Tab size (default 2)" }),
+			),
+			insertSpaces: Type.Optional(
+				Type.Boolean({ description: "Use spaces (default true)" }),
+			),
 		}),
 		async execute(_id, params) {
 			return textResult(await callVsCode("formatRange", params));
@@ -500,7 +531,9 @@ module.exports = (pi) => {
 		parameters: Type.Object({
 			filePath: FilePathParam,
 			range: RangeParam,
-			index: Type.Number({ description: "0-based index from vscode_get_code_actions result" }),
+			index: Type.Number({
+				description: "0-based index from vscode_get_code_actions result",
+			}),
 		}),
 		async execute(_id, params) {
 			return textResult(await callVsCode("executeCodeAction", params));
@@ -514,9 +547,16 @@ module.exports = (pi) => {
 		parameters: Type.Object({
 			message: Type.String({ description: "Notification text" }),
 			level: Type.Optional(
-				Type.Union([Type.Literal("info"), Type.Literal("warning"), Type.Literal("error")], {
-					description: "Severity level (default: info)",
-				}),
+				Type.Union(
+					[
+						Type.Literal("info"),
+						Type.Literal("warning"),
+						Type.Literal("error"),
+					],
+					{
+						description: "Severity level (default: info)",
+					},
+				),
 			),
 		}),
 		async execute(_id, params) {

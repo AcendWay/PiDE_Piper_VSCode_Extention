@@ -18,7 +18,7 @@ import {
 	focusOrCreateTerminal,
 	restartPiTerminal,
 } from "./terminal";
-import { ControlViewProvider } from "./views/controlView";
+import { ControlViewProvider, type FileStatus } from "./views/controlView";
 import { PackagesViewProvider } from "./views/packagesView";
 import { SessionsViewProvider } from "./views/sessionsView";
 
@@ -177,19 +177,21 @@ export async function activate(
 		}),
 
 		vscode.commands.registerCommand("piSidebar.selectModel", async () => {
-			// Delegated to the control view's model picker (Phase 2, #7)
-			// For now, show a quick pick with common models
-			const model = await vscode.window.showQuickPick(commonModels(), {
-				placeHolder: "Select a model for Pi",
+			if (!bridge) return;
+			const models = controlView?.buildQuickPickModels() ?? commonModels();
+			const model = await vscode.window.showQuickPick(models, {
+				placeHolder: "Select a model for Pi (will restart terminal)",
 			});
-			if (!model || !bridge) return;
-			const cfg = vscode.workspace.getConfiguration("piSidebar");
-			await cfg.update(
-				"defaultModel",
-				model,
-				vscode.ConfigurationTarget.Global,
-			);
-			await restartPiTerminal(bridge, context.extensionUri);
+			if (!model) return;
+			// applyModel is handled inside controlView; if the view isn't
+			// open we replicate the logic here.
+			if (controlView) {
+				await (controlView as any).applyModel(model);
+			} else {
+				const cfg = vscode.workspace.getConfiguration("piSidebar");
+				await cfg.update("defaultModel", model, vscode.ConfigurationTarget.Global);
+				await restartPiTerminal(bridge, context.extensionUri);
+			}
 		}),
 
 		vscode.commands.registerCommand("piSidebar.upgrade", async () => {
@@ -214,6 +216,38 @@ export async function activate(
 			}
 		}),
 	);
+
+	// ── File status → control panel live updates ─────────────────────
+	const pushFileStatus = () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			controlView?.notifyFileStatus(null);
+			return;
+		}
+		const diag = vscode.languages.getDiagnostics(editor.document.uri);
+		let errors = 0; let warnings = 0;
+		for (const d of diag) {
+			if (d.severity === vscode.DiagnosticSeverity.Error) errors++;
+			else if (d.severity === vscode.DiagnosticSeverity.Warning) warnings++;
+		}
+		const status: FileStatus = {
+			filePath: vscode.workspace.asRelativePath(editor.document.uri),
+			languageId: editor.document.languageId,
+			cursor: `${editor.selection.active.line + 1}:${editor.selection.active.character + 1}`,
+			isDirty: editor.document.isDirty,
+			errors,
+			warnings,
+		};
+		controlView?.notifyFileStatus(status);
+	};
+
+	context.subscriptions.push(
+		vscode.window.onDidChangeActiveTextEditor(() => pushFileStatus()),
+		vscode.window.onDidChangeTextEditorSelection(() => pushFileStatus()),
+		vscode.languages.onDidChangeDiagnostics(() => pushFileStatus()),
+		vscode.workspace.onDidChangeTextDocument(() => pushFileStatus()),
+	);
+	pushFileStatus(); // seed on startup
 
 	// ── Show sidebar on startup if configured ────────────────────────────────
 	const cfg = vscode.workspace.getConfiguration("piSidebar");

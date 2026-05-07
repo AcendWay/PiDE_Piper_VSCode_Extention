@@ -70,10 +70,12 @@ export async function handleBridgeAction(
 		case "getOpenEditors":
 			return getOpenEditors();
 		case "getWorkspaceFolders":
-			return vscode.workspace.workspaceFolders?.map((f) => ({
-				name: f.name,
-				path: f.uri.fsPath,
-			})) ?? [];
+			return (
+				vscode.workspace.workspaceFolders?.map((f) => ({
+					name: f.name,
+					path: f.uri.fsPath,
+				})) ?? []
+			);
 		case "getDiagnostics":
 			return getDiagnostics(p, context);
 
@@ -95,11 +97,7 @@ export async function handleBridgeAction(
 				context,
 			);
 		case "getDeclarations":
-			return getLspLocations(
-				"vscode.executeDeclarationProvider",
-				p,
-				context,
-			);
+			return getLspLocations("vscode.executeDeclarationProvider", p, context);
 		case "getReferences":
 			return getReferences(p, context);
 		case "getHover":
@@ -319,14 +317,14 @@ function getDiagnostics(
 ): unknown {
 	if (payload.filePath) {
 		const uri = resolveUri(String(payload.filePath), context);
-		return vscode.languages.getDiagnostics(uri).map((d) => serializeDiag(d, uri));
+		return vscode.languages
+			.getDiagnostics(uri)
+			.map((d) => serializeDiag(d, uri));
 	}
 	// Whole workspace
 	return vscode.languages
 		.getDiagnostics()
-		.flatMap(([uri, ds]) =>
-			ds.slice(0, 50).map((d) => serializeDiag(d, uri)),
-		)
+		.flatMap(([uri, ds]) => ds.slice(0, 50).map((d) => serializeDiag(d, uri)))
 		.slice(0, 500);
 }
 
@@ -394,7 +392,10 @@ async function getHover(
 					: (c as { value: string }).value,
 		),
 	);
-	return { contents, range: hovers[0]?.range ? serializeRange(hovers[0].range) : null };
+	return {
+		contents,
+		range: hovers[0]?.range ? serializeRange(hovers[0].range) : null,
+	};
 }
 
 async function getWorkspaceSymbols(
@@ -459,7 +460,10 @@ async function applyWorkspaceEdit(
 ): Promise<string> {
 	const editsRaw = payload.edits as Array<{
 		uri: string;
-		range?: { start: { line: number; character: number }; end: { line: number; character: number } };
+		range?: {
+			start: { line: number; character: number };
+			end: { line: number; character: number };
+		};
 		newText: string;
 		newUri?: string; // for renames
 	}>;
@@ -694,12 +698,21 @@ function resolvePosition(payload: Record<string, unknown>): vscode.Position {
  */
 function resolveRange(payload: Record<string, unknown>): vscode.Range {
 	const r = payload.range as
-		| { start: { line: number; character: number }; end: { line: number; character: number } }
+		| {
+				start: { line: number; character: number };
+				end: { line: number; character: number };
+		  }
 		| undefined;
 	if (r) {
 		return new vscode.Range(
-			new vscode.Position(Math.max(0, r.start.line - 1), Math.max(0, r.start.character - 1)),
-			new vscode.Position(Math.max(0, r.end.line - 1), Math.max(0, r.end.character - 1)),
+			new vscode.Position(
+				Math.max(0, r.start.line - 1),
+				Math.max(0, r.start.character - 1),
+			),
+			new vscode.Position(
+				Math.max(0, r.end.line - 1),
+				Math.max(0, r.end.character - 1),
+			),
 		);
 	}
 	return new vscode.Range(
