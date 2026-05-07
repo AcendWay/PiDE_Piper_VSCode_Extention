@@ -202,6 +202,9 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 			case "restart":
 				await vscode.commands.executeCommand("piSidebar.restart");
 				break;
+			case "restartSession":
+				await vscode.commands.executeCommand("piSidebar.restartSession");
+				break;
 			case "sendContext":
 				await vscode.commands.executeCommand("piSidebar.sendSelection");
 				break;
@@ -617,8 +620,9 @@ button.action:disabled { opacity: 0.38; cursor: default; }
       ${this.terminalRunning ? "" : "disabled"}>⎇ Review Diffs</button>
     <button class="action" id="newBtn" data-action="newTab"
       title="Open another Pi terminal alongside this one. Optional label distinguishes tabs at a glance.">✦ New Pi Tab</button>
-    <button class="action" id="restartBtn" data-action="restart"
-      ${this.terminalRunning ? "" : "disabled"}>↺ Restart</button>
+    <button class="action" id="restartBtn" data-action="restartSession"
+      title="Rewind one turn. Forks a new session at the previous turn; original is preserved in Sessions."
+      ${this.terminalRunning ? "" : "disabled"}>↺ Restart Session</button>
   </div>
 </div>
 

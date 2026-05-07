@@ -2,6 +2,7 @@ import * as crypto from "node:crypto";
 import * as vscode from "vscode";
 import { transition, INITIAL_SNAPSHOT } from "./agentStateMachine";
 import { buildTabName, DEFAULT_PALETTE } from "./tabPalette";
+import { rewindOneTurn, SessionRewindError } from "./sessionRewind";
 import type { AgentEvent } from "./agentStateMachine";
 import { upsertTab } from "./bridge/state";
 import { createBridge } from "./bridge/server";
@@ -254,6 +255,55 @@ export async function activate(
 			setTimeout(() => {
 				controlView?.notifyTerminalState(!!findPiTerminal());
 			}, 250);
+		}),
+
+
+		vscode.commands.registerCommand("piSidebar.restartSession", async () => {
+			if (!bridge) return;
+
+			// Resolve the currently-active tab
+			const currentId = bridge.state.currentTerminalId;
+			const tab = currentId ? bridge.state.tabs.get(currentId) : undefined;
+
+			if (!tab?.sessionFile) {
+				vscode.window.showWarningMessage(
+					"Pi: No turns to rewind yet — the session hasn’t started.",
+				);
+				return;
+			}
+
+			// Rewind one turn (non-destructive fork)
+			let forkPath: string;
+			try {
+				({ forkPath } = rewindOneTurn(tab.sessionFile));
+			} catch (err) {
+				const msg =
+					err instanceof SessionRewindError
+						? err.message
+						: String(err);
+				vscode.window.showErrorMessage(`Pi: Rewind failed — ${msg}`);
+				return;
+			}
+
+			// Kill the current terminal, respawn on the fork file
+			const terminal = terminalMap.get(currentId!);
+			if (terminal) {
+				terminal.dispose();
+				await new Promise<void>((r) => setTimeout(r, 200));
+			}
+
+			const rewindRes = await createPiTerminal(bridge, context.extensionUri, {
+				sessionFile: forkPath,
+				model: tab.model,
+				colorIndex: tab.index,
+			});
+			if (rewindRes) {
+				registerPiTerminal(rewindRes.terminal, rewindRes.terminalId);
+				vscode.window.setStatusBarMessage(
+					"$(check) Pi session rewound one turn — original preserved in Sessions.",
+					4000,
+				);
+			}
 		}),
 
 		vscode.commands.registerCommand("piSidebar.newSession", async () => {
