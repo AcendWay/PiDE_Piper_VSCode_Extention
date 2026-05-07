@@ -1,12 +1,20 @@
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 import type * as vscode from "vscode";
+import { getWslHostIp, IS_WIN } from "../pi";
 import { handleBridgeAction } from "./handlers";
 import { createBridgeState } from "./state";
 import type { BridgeRequest, BridgeResponse } from "./types";
 
 export interface Bridge {
+	/** URL for extension-host-side calls (always 127.0.0.1). */
 	url: string;
+	/**
+	 * URL for WSL2 pi processes to reach the bridge.
+	 * On Windows this is the host IP from /etc/resolv.conf.
+	 * On Linux/WSL it equals `url`.
+	 */
+	wslUrl: string;
 	token: string;
 	state: ReturnType<typeof createBridgeState>;
 	dispose: () => Promise<void>;
@@ -92,10 +100,16 @@ export async function createBridge(
 	});
 
 	const listenHost = process.platform === "win32" ? "127.0.0.1" : "127.0.0.1";
-	const url = `http://${listenHost}:${port}`;
+	// The local URL is always 127.0.0.1 (for extension-host use).
+	// On Windows, WSL2 pi cannot reach 127.0.0.1 on the Windows host —
+	// it must use the Windows host IP read from /etc/resolv.conf.
+	const localUrl = `http://${listenHost}:${port}`;
+	const wslHostIp = IS_WIN ? getWslHostIp() : "127.0.0.1";
+	const wslUrl = `http://${wslHostIp}:${port}`;
 
 	return {
-		url,
+		url: localUrl,
+		wslUrl,
 		token,
 		state,
 		dispose: () =>

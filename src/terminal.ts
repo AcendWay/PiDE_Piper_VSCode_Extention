@@ -23,7 +23,7 @@ export function findPiTerminal(): vscode.Terminal | undefined {
  * Returns the terminal that was focused or created.
  */
 export async function focusOrCreateTerminal(
-	bridgeConfig: { url: string; token: string },
+	bridgeConfig: { url: string; wslUrl: string; token: string },
 	extensionUri: vscode.Uri,
 	options: {
 		sessionFile?: string;
@@ -47,7 +47,7 @@ export async function focusOrCreateTerminal(
  * Create a brand-new Pi terminal.
  */
 export async function createPiTerminal(
-	bridgeConfig: { url: string; token: string },
+	bridgeConfig: { url: string; wslUrl: string; token: string },
 	extensionUri: vscode.Uri,
 	options: {
 		sessionFile?: string;
@@ -134,7 +134,7 @@ export async function createPiTerminal(
  * Kill the running Pi terminal (if any) and start a fresh one.
  */
 export async function restartPiTerminal(
-	bridgeConfig: { url: string; token: string },
+	bridgeConfig: { url: string; wslUrl: string; token: string },
 	extensionUri: vscode.Uri,
 ): Promise<vscode.Terminal | undefined> {
 	const existing = findPiTerminal();
@@ -169,7 +169,7 @@ export function sendTextToTerminal(
  */
 export async function ensureTerminalAndSend(
 	text: string,
-	bridgeConfig: { url: string; token: string },
+	bridgeConfig: { url: string; wslUrl: string; token: string },
 	extensionUri: vscode.Uri,
 	addNewline = true,
 ): Promise<void> {

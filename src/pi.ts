@@ -187,10 +187,14 @@ function decoratePrompt(prompt: string): string {
 /** Build environment variables passed to the pi process. */
 export function buildPiEnv(bridgeConfig: {
 	url: string;
+	wslUrl: string;
 	token: string;
 }): Record<string, string> {
+	// On Windows, pi runs inside WSL2 and must use the host-accessible URL.
+	// On Linux/WSL the wslUrl equals url.
+	const bridgeUrl = IS_WIN ? bridgeConfig.wslUrl : bridgeConfig.url;
 	return {
-		PI_VSCODE_BRIDGE_URL: bridgeConfig.url,
+		PI_VSCODE_BRIDGE_URL: bridgeUrl,
 		PI_VSCODE_BRIDGE_TOKEN: bridgeConfig.token,
 	};
 }
