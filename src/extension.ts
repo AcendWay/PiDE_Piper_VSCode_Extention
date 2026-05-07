@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { createBridge } from "./bridge/server";
+import { registerBridgeListeners } from "./bridge/listeners";
 import type { Bridge } from "./bridge/server";
 import {
 	clearPiBinaryCache,
@@ -36,6 +37,9 @@ export async function activate(
 		void terminalId;
 		void sessionFile;
 	});
+
+	// ── Bridge event listeners (notifications + selection cache) ────────────────
+	registerBridgeListeners(context, bridge.state);
 
 	// ── Sidebar views ────────────────────────────────────────────────────────
 	controlView = new ControlViewProvider(context, bridge);
