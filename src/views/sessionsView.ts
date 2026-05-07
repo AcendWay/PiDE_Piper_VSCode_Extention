@@ -366,8 +366,8 @@ body {
 </head>
 <body>
 <div class="toolbar">
-  <input class="search" id="search" type="text" placeholder="Filter sessions…" oninput="filter()">
-  <button class="refresh-btn" title="Refresh sessions" onclick="send('refresh')">↻</button>
+  <input class="search" id="search" type="text" placeholder="Filter sessions…">
+  <button class="refresh-btn" id="refreshBtn" title="Refresh sessions">↻</button>
 </div>
 <div class="list" id="list">
   <div class="empty">Loading sessions…</div>
@@ -439,12 +439,12 @@ function sessionCard(s, isChild) {
 
   return \`<div class="\${cls}" id="s-\${esc(s.id)}"
     data-id="\${esc(s.id)}" data-file="\${esc(s.filePath)}">
-    <div class="session-header" onclick="toggle('\${esc(s.id)}')">
+    <div class="session-header" data-action="toggle" data-id="\${esc(s.id)}">
       \${statusDot(s.filePath)}
       <span class="session-title" title="\${esc(title)}">\${esc(title)}</span>
       <span class="session-actions">
-        <button class="btn" onclick="event.stopPropagation();send('resume',{filePath:'\${esc(s.filePath)}'})">Resume</button>
-        <button class="btn" onclick="event.stopPropagation();send('fork',{filePath:'\${esc(s.filePath)}'})">Fork</button>
+        <button class="btn" data-action="resume" data-file="\${esc(s.filePath)}">Resume</button>
+        <button class="btn" data-action="fork" data-file="\${esc(s.filePath)}">Fork</button>
       </span>
     </div>
     <div class="session-meta">\${esc(meta)}</div>
@@ -506,6 +506,22 @@ function render() {
     '<div class="empty">No sessions match the filter.</div>';
 }
 
+// Event delegation — strict CSP (script-src nonce-only) blocks inline onclick.
+document.getElementById('search').addEventListener('input', () => filter());
+document.getElementById('refreshBtn').addEventListener('click', () => send('refresh'));
+
+document.body.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+  if (action === 'toggle') {
+    if (el.dataset.id) toggle(el.dataset.id);
+  } else if (action === 'resume' || action === 'fork') {
+    e.stopPropagation();
+    if (el.dataset.file) send(action, { filePath: el.dataset.file });
+  }
+});
+
 window.addEventListener('message', e => {
   const msg = e.data;
   if (msg.type === 'sessions') {
@@ -514,6 +530,9 @@ window.addEventListener('message', e => {
     render();
   }
 });
+
+// Ask host for current session list now that listeners are attached.
+send('refresh');
 </script>
 </body>
 </html>`;

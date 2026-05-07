@@ -2,6 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Buffer } from "node:buffer";
 import * as vscode from "vscode";
 import type { Bridge } from "../bridge/server";
 import {
@@ -195,10 +196,38 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 				this.notifyTerminalState(true);
 				break;
 			case "dropFile": {
-				const { filePath, isImage } = msg;
-				if (!filePath) break;
+				let { filePath } = msg;
+				const { isImage, fileName, fileBase64 } = msg;
 				const terminal = findPiTerminal();
-				if (!terminal) break;
+				if (!terminal) {
+					vscode.window.showWarningMessage(
+						"Pi: No terminal running. Open the Pi Agent terminal first.",
+					);
+					break;
+				}
+				// If we got base64 contents but no path (OS file-manager drop in webview
+				// — Electron strips File.path), persist to a tmp file and use that.
+				if (!filePath && fileBase64 && fileName) {
+					try {
+						const tmpDir = path.join(os.tmpdir(), "pi-vscode-drops");
+						fs.mkdirSync(tmpDir, { recursive: true });
+						const safeName = fileName.replace(/[^A-Za-z0-9._-]/g, "_");
+						const tmpPath = path.join(tmpDir, `${Date.now()}-${safeName}`);
+						fs.writeFileSync(tmpPath, Buffer.from(fileBase64, "base64"));
+						filePath = tmpPath;
+					} catch (err) {
+						vscode.window.showErrorMessage(
+							`Pi: Failed to stash dropped file: ${(err as Error).message}`,
+						);
+						break;
+					}
+				}
+				if (!filePath) {
+					vscode.window.showWarningMessage(
+						"Pi: Dropped item had no readable path or content.",
+					);
+					break;
+				}
 				if (isImage) {
 					terminal.sendText(`[Image attached: ${filePath}]`, true);
 				} else {
@@ -232,6 +261,18 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 		if (findPiTerminal()) {
 			await restartPiTerminal(this.bridge, this.context.extensionUri);
 			this.notifyTerminalState(true);
+			vscode.window.setStatusBarMessage(
+				`$(check) Pi model set to ${model} (terminal restarted)`,
+				4000,
+			);
+		} else {
+			// No live terminal — spin one up so the new model is actually used.
+			await createPiTerminal(this.bridge, this.context.extensionUri);
+			this.notifyTerminalState(true);
+			vscode.window.setStatusBarMessage(
+				`$(check) Pi started with ${model}`,
+				4000,
+			);
 		}
 	}
 
@@ -248,7 +289,7 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 
 	// ── HTML ─────────────────────────────────────────────────────────────────
 
-	private html(webview: vscode.Webview): string {
+	private html(_webview: vscode.Webview): string {
 		const nonce = crypto.randomBytes(16).toString("hex");
 		const cfg = vscode.workspace.getConfiguration("piSidebar");
 		// Prefer VS Code setting override, then fall back to pi's own default
@@ -279,10 +320,10 @@ body {
   font-size: var(--vscode-font-size);
   color: var(--vscode-foreground);
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-  padding: 10px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   min-height: 100vh;
 }
 
@@ -291,17 +332,21 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-bottom: 8px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--vscode-widget-border, transparent);
 }
 .status-dot {
-  width: 8px; height: 8px;
+  width: 9px; height: 9px;
   border-radius: 50%;
   background: var(--vscode-testing-iconFailed, #f44747);
   flex-shrink: 0;
-  transition: background 0.3s;
+  transition: background 0.3s, box-shadow 0.3s;
+  box-shadow: 0 0 0 0 rgba(137, 209, 133, 0);
 }
-.status-dot.running { background: var(--vscode-testing-iconPassed, #89d185); }
+.status-dot.running {
+  background: var(--vscode-testing-iconPassed, #89d185);
+  box-shadow: 0 0 0 3px rgba(137, 209, 133, 0.18);
+}
 .header-title {
   flex: 1;
   font-weight: 600;
@@ -309,6 +354,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 .workspace-name {
   font-size: 10px;
@@ -320,29 +366,30 @@ body {
 }
 
 /* ── Sections ── */
-.section { display: flex; flex-direction: column; gap: 5px; }
+.section { display: flex; flex-direction: column; gap: 6px; }
 .section-label {
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   color: var(--vscode-descriptionForeground);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 /* ── Model selector ── */
-.model-row { display: flex; gap: 5px; align-items: center; }
+.model-row { display: flex; gap: 6px; align-items: center; }
 select {
   flex: 1;
   min-width: 0;
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 3px;
-  padding: 4px 6px;
+  border-radius: 4px;
+  padding: 5px 8px;
   font-size: 12px;
   font-family: inherit;
   outline: none;
   cursor: pointer;
+  transition: border-color 0.15s;
 }
 select:focus { border-color: var(--vscode-focusBorder); }
 .view-all-btn {
@@ -351,27 +398,29 @@ select:focus { border-color: var(--vscode-focusBorder); }
   color: var(--vscode-textLink-foreground);
   font-size: 10px;
   cursor: pointer;
-  padding: 2px 0;
+  padding: 2px 4px;
   white-space: nowrap;
   font-family: inherit;
+  border-radius: 3px;
+  transition: background 0.15s;
 }
-.view-all-btn:hover { text-decoration: underline; }
+.view-all-btn:hover { background: var(--vscode-toolbar-hoverBackground); text-decoration: underline; }
 
 /* ── Context window ── */
 .ctx-bar-wrap {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 .ctx-bar-track {
   height: 6px;
   background: var(--vscode-progressBar-background, rgba(128,128,128,0.2));
-  border-radius: 3px;
+  border-radius: 4px;
   overflow: hidden;
 }
 .ctx-bar-fill {
   height: 100%;
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--vscode-testing-iconPassed, #89d185);
   transition: width 0.4s ease, background 0.4s ease;
   width: 0%;
@@ -392,9 +441,12 @@ select:focus { border-color: var(--vscode-focusBorder); }
   color: var(--vscode-foreground);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   min-height: 20px;
   flex-wrap: wrap;
+  padding: 4px 6px;
+  background: var(--vscode-input-background);
+  border-radius: 4px;
 }
 .file-path {
   flex: 1;
@@ -408,8 +460,8 @@ select:focus { border-color: var(--vscode-focusBorder); }
 .file-none { color: var(--vscode-descriptionForeground); font-style: italic; }
 .badge {
   font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 2px;
+  padding: 1px 5px;
+  border-radius: 3px;
   background: var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
   flex-shrink: 0;
@@ -419,18 +471,40 @@ select:focus { border-color: var(--vscode-focusBorder); }
 .errors { color: var(--vscode-testing-iconFailed, #f44747); font-size: 10px; flex-shrink: 0; }
 .warns  { color: #e5a731; font-size: 10px; flex-shrink: 0; }
 
+/* ── Drop zone ── */
+.drop-zone {
+  border: 1.5px dashed var(--vscode-input-border, rgba(128,128,128,0.45));
+  border-radius: 6px;
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-input-background);
+  transition: all 0.15s ease;
+  cursor: copy;
+  user-select: none;
+}
+.drop-zone:hover { border-color: var(--vscode-focusBorder, #007acc); color: var(--vscode-foreground); }
+.drop-zone.over {
+  border-color: var(--vscode-focusBorder, #007acc);
+  background: var(--vscode-list-dropBackground, rgba(0,122,204,0.12));
+  color: var(--vscode-foreground);
+}
+.drop-zone.success { border-color: var(--vscode-testing-iconPassed, #89d185); color: var(--vscode-testing-iconPassed, #89d185); }
+.drop-zone.error   { border-color: var(--vscode-testing-iconFailed, #f44747); color: var(--vscode-testing-iconFailed, #f44747); }
+
 /* ── Quick actions ── */
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 5px;
+  gap: 6px;
 }
 button.action {
-  padding: 5px 4px;
+  padding: 6px 5px;
   background: var(--vscode-button-secondaryBackground);
   color: var(--vscode-button-secondaryForeground);
   border: none;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
   font-size: 11px;
   font-family: inherit;
@@ -438,6 +512,7 @@ button.action {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: background 0.15s, opacity 0.15s;
 }
 button.action:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
 button.action.primary {
@@ -445,7 +520,8 @@ button.action.primary {
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   font-size: 12px;
-  padding: 6px;
+  padding: 7px;
+  font-weight: 600;
 }
 button.action.primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
 button.action:disabled { opacity: 0.38; cursor: default; }
@@ -504,8 +580,7 @@ button.action:disabled { opacity: 0.38; cursor: default; }
 <div class="section">
   <div class="section-label">Drop Files</div>
   <div class="drop-zone" id="dropZone">
-    <img class="drop-thumb" id="dropThumb" alt="preview">
-    <div id="dropLabel">🖼 Drop image for vision &nbsp;·&nbsp; 📄 Drop file for context</div>
+    <span id="dropLabel">Drop files here</span>
   </div>
 </div>
 
@@ -513,15 +588,15 @@ button.action:disabled { opacity: 0.38; cursor: default; }
 <div class="section">
   <div class="actions">
     <button class="action primary" id="openBtn"
-      onclick="send('${this.terminalRunning ? "open" : "open"}')">
+      data-action="open">
       ${this.terminalRunning ? "▶ Focus Terminal" : "▶ Open Terminal"}
     </button>
-    <button class="action" id="ctxBtn" onclick="send('sendContext')"
+    <button class="action" id="ctxBtn" data-action="sendContext"
       ${this.terminalRunning ? "" : "disabled"}>📎 Send Context</button>
-    <button class="action" id="diffBtn" onclick="send('reviewDiffs')"
+    <button class="action" id="diffBtn" data-action="reviewDiffs"
       ${this.terminalRunning ? "" : "disabled"}>⎇ Review Diffs</button>
-    <button class="action" id="newBtn" onclick="send('newSession')">✦ New Session</button>
-    <button class="action" id="restartBtn" onclick="send('restart')"
+    <button class="action" id="newBtn" data-action="newSession">✦ New Session</button>
+    <button class="action" id="restartBtn" data-action="restart"
       ${this.terminalRunning ? "" : "disabled"}>↺ Restart</button>
   </div>
 </div>
@@ -534,6 +609,14 @@ let isRunning = ${this.terminalRunning};
 function send(type, extra) {
   vscode.postMessage({ type, ...extra });
 }
+
+// Action button delegation — strict CSP (script-src nonce-only) blocks inline onclick.
+document.body.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn || btn.disabled) return;
+  const action = btn.dataset.action;
+  if (action) send(action);
+});
 
 // Model selector
 const modelSelect = document.getElementById('modelSelect');
@@ -639,10 +722,10 @@ window.addEventListener('message', e => {
   }
 });
 
-// Drop zone
+// ── Drop zone ─────────────────────────────────────────────────────────
 const IMAGE_EXTS = new Set(['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp']);
+const DEFAULT_DROP_LABEL = 'Drop files here';
 const dropZone = document.getElementById('dropZone');
-const dropThumb = document.getElementById('dropThumb');
 const dropLabel = document.getElementById('dropLabel');
 
 function extOf(name) {
@@ -650,56 +733,169 @@ function extOf(name) {
   return i >= 0 ? name.slice(i).toLowerCase() : '';
 }
 
-dropZone.addEventListener('dragover', e => {
-  e.preventDefault();
-  dropZone.classList.add('over');
+function setDropState(state, text) {
+  dropZone.className = 'drop-zone' + (state ? ' ' + state : '');
+  dropLabel.textContent = text || DEFAULT_DROP_LABEL;
+}
+
+function resetDropLater(ms) {
+  setTimeout(() => setDropState('', DEFAULT_DROP_LABEL), ms);
+}
+
+// Convert a file:// URI to an OS path (handles encoded chars and Windows drive letters)
+function fileUriToPath(uri) {
+  try {
+    if (!uri.startsWith('file://')) return uri;
+    let p = decodeURIComponent(uri.slice(7));
+    // Strip leading slash on Windows drive paths: /C:/foo -> C:/foo
+    if (/^\\/[A-Za-z]:/.test(p)) p = p.slice(1);
+    return p;
+  } catch {
+    return uri;
+  }
+}
+
+// Read a File as base64 (for OS drops where File.path is empty in webviews)
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result || '';
+      const comma = String(result).indexOf(',');
+      resolve(comma >= 0 ? String(result).slice(comma + 1) : '');
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+// Pull dropped items: prefer paths, fall back to in-memory File objects.
+// Returns { items: [{ path?, file?, name }], debug: string }
+function extractDroppedItems(dt) {
+  const items = [];
+  const seen = new Set();
+  const dbg = [];
+  if (!dt) return { items, debug: 'no DataTransfer' };
+
+  dbg.push('types=[' + Array.from(dt.types || []).join(',') + ']');
+  dbg.push('files=' + (dt.files ? dt.files.length : 0));
+
+  // 1. URI lists — VS Code Explorer drags expose this; gives a real fs path.
+  for (const fmt of ['application/vnd.code.uri-list', 'text/uri-list']) {
+    const raw = dt.getData(fmt);
+    if (!raw) continue;
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const fp = fileUriToPath(trimmed);
+      if (!fp || seen.has(fp)) continue;
+      seen.add(fp);
+      items.push({ path: fp, name: fp.split(/[\\/]/).pop() || fp });
+    }
+  }
+
+  // 2. Native File objects (OS file manager drops).
+  //    In modern Electron webviews File.path is empty, so we keep the File
+  //    around and the extension host will save it to a tmp file.
+  for (const file of Array.from(dt.files || [])) {
+    const p = file.path || '';
+    if (p) {
+      if (!seen.has(p)) {
+        seen.add(p);
+        items.push({ path: p, name: file.name });
+      }
+    } else if (!seen.has('blob:' + file.name + ':' + file.size)) {
+      seen.add('blob:' + file.name + ':' + file.size);
+      items.push({ file, name: file.name });
+    }
+  }
+
+  // 3. Plain text fallback (paths copied/dragged as text).
+  if (!items.length) {
+    const txt = dt.getData('text/plain');
+    if (txt && (txt.startsWith('/') || /^[A-Za-z]:[\\/]/.test(txt) || txt.startsWith('file://'))) {
+      const fp = fileUriToPath(txt.trim());
+      items.push({ path: fp, name: fp.split(/[\\/]/).pop() || fp });
+    }
+  }
+
+  dbg.push('items=' + items.length);
+  return { items, debug: dbg.join(' ') };
+}
+
+['dragenter', 'dragover'].forEach(ev => {
+  dropZone.addEventListener(ev, e => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    dropZone.classList.add('over');
+  });
 });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
-dropZone.addEventListener('drop', async e => {
+['dragleave', 'dragend'].forEach(ev => {
+  dropZone.addEventListener(ev, e => {
+    e.preventDefault();
+    dropZone.classList.remove('over');
+  });
+});
+
+dropZone.addEventListener('drop', async (e) => {
   e.preventDefault();
+  e.stopPropagation();
   dropZone.classList.remove('over');
-  const files = Array.from(e.dataTransfer?.files ?? []);
-  if (!files.length) return;
 
   if (!isRunning) {
     setDropState('error', '⚠ No Pi terminal running');
+    resetDropLater(2000);
     return;
   }
 
-  for (const file of files) {
-    const isImage = IMAGE_EXTS.has(extOf(file.name));
-    // In VS Code's Electron environment, File objects have a .path property
-    const filePath = (file).path || file.name;
+  const { items, debug } = extractDroppedItems(e.dataTransfer);
+  // Helpful when triaging future drag/drop issues — visible in webview devtools.
+  console.log('[Pi drop]', debug);
 
-    if (isImage) {
-      // Show thumbnail preview briefly
-      const reader = new FileReader();
-      reader.onload = ev => {
-        dropThumb.src = ev.target?.result;
-        dropThumb.classList.add('visible');
-        dropLabel.style.display = 'none';
-        setTimeout(() => {
-          dropThumb.classList.remove('visible');
-          dropThumb.src = '';
-          dropLabel.style.display = '';
-          setDropState('', '🖼 Drop image for vision · 📄 Drop file for context');
-        }, 1500);
-      };
-      reader.readAsDataURL(file);
-      send('dropFile', { filePath, isImage: true });
-      setDropState('success', '✓ Image attached');
-    } else {
-      send('dropFile', { filePath, isImage: false });
-      setDropState('success', '✓ File path sent: ' + file.name);
-      setTimeout(() => setDropState('', '🖼 Drop image for vision · 📄 Drop file for context'), 1500);
-    }
+  if (!items.length) {
+    setDropState('error', 'Nothing droppable detected (' + debug + ')');
+    resetDropLater(3000);
+    return;
   }
+
+  setDropState('over', 'Reading …');
+  let imageCount = 0;
+  let fileCount = 0;
+  try {
+    for (const item of items) {
+      const isImage = IMAGE_EXTS.has(extOf(item.name));
+      if (item.path) {
+        send('dropFile', { filePath: item.path, isImage });
+      } else if (item.file) {
+        // Webview can't see the OS path — ship the bytes to the extension host.
+        const base64 = await fileToBase64(item.file);
+        send('dropFile', {
+          fileName: item.name,
+          fileBase64: base64,
+          isImage,
+        });
+      } else {
+        continue;
+      }
+      if (isImage) imageCount++; else fileCount++;
+    }
+  } catch (err) {
+    setDropState('error', 'Read failed: ' + (err && err.message ? err.message : err));
+    resetDropLater(2500);
+    return;
+  }
+
+  const parts = [];
+  if (imageCount) parts.push(imageCount + ' image' + (imageCount > 1 ? 's' : ''));
+  if (fileCount)  parts.push(fileCount + ' file' + (fileCount > 1 ? 's' : ''));
+  setDropState('success', '✓ Sent ' + parts.join(' + '));
+  resetDropLater(1800);
 });
 
-function setDropState(state, text) {
-  dropZone.className = 'drop-zone' + (state ? ' ' + state : '');
-  dropLabel.textContent = text;
-}
+// Block the global window from hijacking the drop (otherwise VS Code may open the file)
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
 
 send('ready');
 </script>
@@ -724,6 +920,8 @@ interface WebviewMessage {
 	model?: string;
 	filePath?: string;
 	isImage?: boolean;
+	fileName?: string;
+	fileBase64?: string;
 }
 
 function esc(s: string): string {

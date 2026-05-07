@@ -1,1 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#141414"/><path d="M6 7h12M8 12h8M10 17h4" stroke="#f6d365" stroke-width="2" stroke-linecap="round"/><circle cx="18" cy="17" r="2" fill="#64d2ff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- VS Code tints monochrome activity-bar icons; do NOT set fills.
+       Stroke uses currentColor so it follows the active/inactive theme. -->
+  <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Top bar of π -->
+    <path d="M4.5 7.5 H19.5" />
+    <!-- Left leg -->
+    <path d="M9 7.5 V17" />
+    <!-- Right leg with foot curl -->
+    <path d="M15 7.5 V15.5 C15 16.6 15.9 17.5 17 17.5" />
+  </g>
+</svg>

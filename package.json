@@ -2,7 +2,7 @@
   "name": "pi-vscode-sidebar",
   "displayName": "Pi Sidebar",
   "description": "Run the Pi coding agent as a native VS Code terminal with sidebar management: model selector, context indicator, session history, and package marketplace.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "publisher": "local",
   "extensionKind": ["workspace", "ui"],
@@ -172,6 +172,11 @@
           "type": "boolean",
           "default": true,
           "description": "Reveal the Pi sidebar when VS Code starts."
+        },
+        "piSidebar.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically launch a Pi Agent terminal when the extension activates if no Pi terminal is running."
         }
       }
     }
@@ -182,7 +187,7 @@
     "watch": "tsc -watch -p ./",
     "typecheck": "tsc --noEmit -p ./",
     "package": "npm run compile && npx @vscode/vsce package --allow-missing-repository --no-git-tag-version",
-    "package-install": "npm run package && code --install-extension pi-vscode-sidebar-0.1.0.vsix"
+    "package-install": "npm run package && code --install-extension pi-vscode-sidebar-0.2.0.vsix"
   },
   "dependencies": {
     "typebox": "^1.0.58"

@@ -58,10 +58,12 @@ function loadCustomModelIds(): string[] {
 function fetchModels(): ModelEntry[] {
 	try {
 		const piPath = findPiBinary();
-		const raw = child_process.execSync(`"${piPath}" --list-models`, {
+		// pi writes the table to stderr — capture both streams.
+		const result = child_process.spawnSync(piPath, ["--list-models"], {
 			encoding: "utf8",
 			timeout: 10_000,
 		});
+		const raw = `${result.stdout ?? ""}${result.stderr ?? ""}`;
 		const entries = parseListModelsOutput(raw);
 		const customIds = new Set(loadCustomModelIds());
 		for (const e of entries) {
@@ -80,6 +82,7 @@ export class ModelsViewProvider implements vscode.WebviewViewProvider {
 
 	private view?: vscode.WebviewView;
 	private models: ModelEntry[] = [];
+	private webviewReady = false;
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -94,6 +97,10 @@ export class ModelsViewProvider implements vscode.WebviewViewProvider {
 		view.webview.onDidReceiveMessage(
 			async (msg: { type: string; model?: string }) => {
 				switch (msg.type) {
+					case "ready":
+						this.webviewReady = true;
+						this.refresh();
+						break;
 					case "refresh":
 						this.refresh();
 						break;
@@ -137,10 +144,10 @@ export class ModelsViewProvider implements vscode.WebviewViewProvider {
 		);
 
 		view.onDidChangeVisibility(() => {
-			if (view.visible) this.refresh();
+			if (view.visible && this.webviewReady) this.refresh();
 		});
-
-		this.refresh();
+		// NOTE: do not call refresh() here — webview script hasn't run yet.
+		// It will fire `ready` once its listener is attached.
 	}
 
 	/** Push latest model + current selection to webview. */
@@ -152,6 +159,14 @@ export class ModelsViewProvider implements vscode.WebviewViewProvider {
 		this.models = fetchModels();
 		const cfg = vscode.workspace.getConfiguration("piSidebar");
 		const current = cfg.get<string>("defaultModel", "") ?? "";
+		if (!this.models.length) {
+			this.post({
+				type: "modelsError",
+				error:
+					"pi --list-models returned no rows. Is `pi` installed and on PATH?",
+			});
+			return;
+		}
 		this.post({ type: "models", models: this.models, current });
 	}
 
@@ -180,7 +195,7 @@ body {
   display: flex; flex-direction: column; height: 100vh; overflow: hidden;
 }
 .toolbar {
-  display: flex; gap: 5px; padding: 8px; flex-shrink: 0;
+  display: flex; gap: 6px; padding: 10px; flex-shrink: 0;
   border-bottom: 1px solid var(--vscode-widget-border, transparent);
   align-items: center;
 }
@@ -189,15 +204,17 @@ input.search {
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 3px; padding: 3px 7px; font-size: 11px;
+  border-radius: 4px; padding: 5px 8px; font-size: 12px;
   font-family: inherit; outline: none;
+  transition: border-color 0.15s;
 }
 input.search:focus { border-color: var(--vscode-focusBorder); }
 .icon-btn {
   background: none; border: none;
   color: var(--vscode-foreground);
-  cursor: pointer; font-size: 14px; padding: 2px 4px;
-  opacity: 0.7; border-radius: 3px; flex-shrink: 0;
+  cursor: pointer; font-size: 14px; padding: 4px 6px;
+  opacity: 0.7; border-radius: 4px; flex-shrink: 0;
+  transition: opacity 0.15s, background 0.15s;
 }
 .icon-btn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
 
@@ -266,8 +283,8 @@ input.search:focus { border-color: var(--vscode-focusBorder); }
 <body>
 
 <div class="toolbar">
-  <input class="search" id="search" type="text" placeholder="Search models…" oninput="onSearch()">
-  <button class="icon-btn" title="Refresh models" onclick="send('refresh')">↻</button>
+  <input class="search" id="search" type="text" placeholder="Search models…">
+  <button class="icon-btn" id="refreshBtn" title="Refresh models">↻</button>
 </div>
 
 <div class="list" id="list">
@@ -275,7 +292,7 @@ input.search:focus { border-color: var(--vscode-focusBorder); }
 </div>
 
 <div class="footer">
-  <button class="footer-btn" onclick="send('editModelsJson')" title="Add custom models via ~/.pi/agent/models.json">
+  <button class="footer-btn" id="editJsonBtn" title="Add custom models via ~/.pi/agent/models.json">
     ✎ Edit models.json
   </button>
 </div>
@@ -283,6 +300,7 @@ input.search:focus { border-color: var(--vscode-focusBorder); }
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
 let allModels = [];
+let errorMsg = '';
 let currentModel = '';
 let query = '';
 
@@ -292,25 +310,23 @@ function esc(s) {
   const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML;
 }
 
-function onSearch() {
-  query = document.getElementById('search').value.toLowerCase();
-  render();
-}
-
 function render() {
+  const list = document.getElementById('list');
+  if (errorMsg) {
+    list.innerHTML = '<div class="status">' + esc(errorMsg) + '</div>';
+    return;
+  }
   if (!allModels.length) {
-    document.getElementById('list').innerHTML =
-      '<div class="status">No models found.<br>Is <code>pi</code> installed?</div>';
+    list.innerHTML = '<div class="status">Loading models…</div>';
     return;
   }
 
-  // Filter
   const filtered = query
     ? allModels.filter(m => (m.provider + ' ' + m.id).toLowerCase().includes(query))
     : allModels;
 
   if (!filtered.length) {
-    document.getElementById('list').innerHTML = '<div class="status">No models match.</div>';
+    list.innerHTML = '<div class="status">No models match.</div>';
     return;
   }
 
@@ -329,33 +345,54 @@ function render() {
       const label = isActive ? '✓ Active' : 'Use';
       const badges = [
         m.thinking ? '<span class="badge thinking">thinking</span>' : '',
-        m.images   ? '<span class="badge images">vision</span>'   : '',
-        m.custom   ? '<span class="badge custom">custom</span>'   : '',
+        m.images   ? '<span class="badge images">vision</span>'    : '',
+        m.custom   ? '<span class="badge custom">custom</span>'    : '',
       ].filter(Boolean).join('');
       html += '<div class="' + cls + '">' +
         '<div class="model-id" title="' + esc(m.id) + '">' + esc(m.id) + '</div>' +
         '<div class="meta">' + esc(m.context) + '</div>' +
         (badges ? '<div class="badges">' + badges + '</div>' : '') +
-        '<button class="use-btn" onclick="send('selectModel',{model:'' + esc(m.id) + ''})">' + label + '</button>' +
+        '<button class="use-btn" data-action="selectModel" data-model="' + esc(m.id) + '">' + label + '</button>' +
       '</div>';
     }
   }
 
-  document.getElementById('list').innerHTML = html;
+  list.innerHTML = html;
 }
+
+// Event delegation — no inline handlers
+document.getElementById('search').addEventListener('input', (e) => {
+  query = e.target.value.toLowerCase();
+  render();
+});
+document.getElementById('refreshBtn').addEventListener('click', () => send('refresh'));
+document.getElementById('editJsonBtn').addEventListener('click', () => send('editModelsJson'));
+
+document.body.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action="selectModel"]');
+  if (!btn) return;
+  const model = btn.dataset.model;
+  if (model) send('selectModel', { model });
+});
 
 window.addEventListener('message', e => {
   const msg = e.data;
   if (msg.type === 'models') {
+    errorMsg = '';
     allModels = msg.models || [];
     currentModel = msg.current || '';
     render();
-  }
-  if (msg.type === 'currentModel') {
+  } else if (msg.type === 'modelsError') {
+    errorMsg = msg.error || 'Failed to load models.';
+    render();
+  } else if (msg.type === 'currentModel') {
     currentModel = msg.model || '';
     render();
   }
 });
+
+// Tell the extension we are ready to receive messages
+send('ready');
 </script>
 </body>
 </html>`;

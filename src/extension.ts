@@ -178,7 +178,11 @@ export async function activate(
 		vscode.commands.registerCommand("piSidebar.restart", async () => {
 			if (!bridge) return;
 			await restartPiTerminal(bridge, context.extensionUri);
-			controlView?.notifyTerminalState(false);
+			// onDidOpenTerminal will flip the dot back to running — but if
+			// the close event is in flight, force a re-check too.
+			setTimeout(() => {
+				controlView?.notifyTerminalState(!!findPiTerminal());
+			}, 250);
 		}),
 
 		vscode.commands.registerCommand("piSidebar.newSession", async () => {
@@ -225,13 +229,27 @@ export async function activate(
 
 	// ── Terminal close listener ──────────────────────────────────────────────
 	context.subscriptions.push(
+		vscode.window.onDidOpenTerminal((terminal) => {
+			if (
+				terminal.name === "Pi Agent" ||
+				terminal.name.startsWith("Pi Agent")
+			) {
+				controlView?.notifyTerminalState(true);
+			}
+		}),
 		vscode.window.onDidCloseTerminal((terminal) => {
 			if (
 				terminal.name === "Pi Agent" ||
 				terminal.name.startsWith("Pi Agent")
 			) {
-				controlView?.notifyTerminalState(false);
 				sessionTracker?.onClose(terminal);
+				// During a restart the old terminal closes while a new one is
+				// already being created — don't flip the dot to red just to flip
+				// it back. Re-check after the new terminal has had a chance
+				// to register.
+				setTimeout(() => {
+					controlView?.notifyTerminalState(!!findPiTerminal());
+				}, 250);
 			}
 		}),
 	);
@@ -270,12 +288,23 @@ export async function activate(
 	pushFileStatus(); // seed on startup
 
 	// ── Restore sessions from previous VS Code window ──────────────────
-	if (
-		vscode.workspace
-			.getConfiguration("piSidebar")
-			.get<boolean>("restoreSessions", true)
-	) {
-		void sessionTracker.restore(bridge, context.extensionUri);
+	const piSidebarCfg = vscode.workspace.getConfiguration("piSidebar");
+	if (piSidebarCfg.get<boolean>("restoreSessions", true)) {
+		try {
+			await sessionTracker.restore(bridge, context.extensionUri);
+		} catch (err) {
+			console.error("Pi: session restore failed", err);
+		}
+	}
+
+	// ── Auto-start a Pi terminal on activation if none exists ───────────────
+	if (!findPiTerminal() && piSidebarCfg.get<boolean>("autoStart", true)) {
+		try {
+			await createPiTerminal(bridge, context.extensionUri);
+			controlView?.notifyTerminalState(true);
+		} catch (err) {
+			console.error("Pi: auto-start failed", err);
+		}
 	}
 
 	// Push active sessions to sessions view whenever they change
