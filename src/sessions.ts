@@ -34,9 +34,11 @@ export class SessionTracker {
 
 	/** Called when a terminal closes. Preserves entry on shutdown. */
 	onClose(terminal: vscode.Terminal): void {
-		if (terminal.name !== "Pi Agent" && !terminal.name.startsWith("Pi Agent")) return;
+		if (terminal.name !== "Pi Agent" && !terminal.name.startsWith("Pi Agent"))
+			return;
 		// Preserve sessions across VS Code shutdown restarts
-		if (terminal.exitStatus?.reason === vscode.TerminalExitReason.Shutdown) return;
+		if (terminal.exitStatus?.reason === vscode.TerminalExitReason.Shutdown)
+			return;
 		const id = this.terminalIds.get(terminal);
 		if (!id) return;
 		const sessions = this.read().filter((s) => s.terminalId !== id);
@@ -44,10 +46,7 @@ export class SessionTracker {
 	}
 
 	/** Restore valid sessions on activation. Invalid/missing files are pruned. */
-	async restore(
-		bridge: Bridge,
-		extensionUri: vscode.Uri,
-	): Promise<void> {
+	async restore(bridge: Bridge, extensionUri: vscode.Uri): Promise<void> {
 		const sessions = this.read();
 		const valid: SessionEntry[] = [];
 

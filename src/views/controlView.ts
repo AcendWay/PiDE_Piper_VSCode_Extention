@@ -125,7 +125,11 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 		this.contextPollTimer = setInterval(() => {
 			const usage = this.bridge.state.contextUsage;
 			if (usage) {
-				this.post({ type: "contextUsage", used: usage.used, total: usage.total });
+				this.post({
+					type: "contextUsage",
+					used: usage.used,
+					total: usage.total,
+				});
 			}
 		}, 3_000);
 	}
@@ -182,7 +186,11 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 				this.post({ type: "terminalState", running: this.terminalRunning });
 				const usage = this.bridge.state.contextUsage;
 				if (usage)
-					this.post({ type: "contextUsage", used: usage.used, total: usage.total });
+					this.post({
+						type: "contextUsage",
+						used: usage.used,
+						total: usage.total,
+					});
 				break;
 			}
 		}

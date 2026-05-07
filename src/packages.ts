@@ -43,9 +43,7 @@ export class PackageManager {
 	private outputChannel?: vscode.OutputChannel;
 
 	/** Refresh the installed list and post to webview. */
-	async refreshInstalled(
-		postMessage: (msg: unknown) => void,
-	): Promise<void> {
+	async refreshInstalled(postMessage: (msg: unknown) => void): Promise<void> {
 		const piPath = findPiBinary();
 		const packages = await getInstalledPackages(piPath);
 		postMessage({

@@ -42,7 +42,9 @@ function parseSessionFile(filePath: string): SessionMeta | null {
 		for (const line of lines) {
 			try {
 				const entry = JSON.parse(line) as Record<string, unknown>;
-				const ts = entry.timestamp ? new Date(entry.timestamp as string) : new Date(0);
+				const ts = entry.timestamp
+					? new Date(entry.timestamp as string)
+					: new Date(0);
 				if (ts > lastActiveAt) lastActiveAt = ts;
 
 				switch (entry.type) {
@@ -53,13 +55,16 @@ function parseSessionFile(filePath: string): SessionMeta | null {
 						break;
 					case "model_change":
 						if (!model) model = String((entry as any).modelId ?? "");
-						if (!parentId) parentId = String((entry as any).parentId ?? "") || null;
+						if (!parentId)
+							parentId = String((entry as any).parentId ?? "") || null;
 						break;
 					case "message": {
-						const msg = (entry as any).message as {
-							role: string;
-							content: unknown[];
-						} | undefined;
+						const msg = (entry as any).message as
+							| {
+									role: string;
+									content: unknown[];
+							  }
+							| undefined;
 						if (!msg) break;
 						if (msg.role === "user" && !firstUserMessage) {
 							const textBlock = (msg.content ?? []).find(
@@ -160,21 +165,21 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 		this.refresh();
 		view.webview.html = this.html(view.webview);
 
-		view.webview.onDidReceiveMessage(async (msg: { type: string; filePath?: string }) => {
-			switch (msg.type) {
-				case "refresh":
-					this.refresh();
-					break;
-				case "resume":
-					if (msg.filePath && this.bridge)
-						await this.resume(msg.filePath);
-					break;
-				case "fork":
-					if (msg.filePath && this.bridge)
-						await this.fork(msg.filePath);
-					break;
-			}
-		});
+		view.webview.onDidReceiveMessage(
+			async (msg: { type: string; filePath?: string }) => {
+				switch (msg.type) {
+					case "refresh":
+						this.refresh();
+						break;
+					case "resume":
+						if (msg.filePath && this.bridge) await this.resume(msg.filePath);
+						break;
+					case "fork":
+						if (msg.filePath && this.bridge) await this.fork(msg.filePath);
+						break;
+				}
+			},
+		);
 
 		view.onDidChangeVisibility(() => {
 			if (view.visible) this.refresh();
@@ -206,9 +211,13 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 
 	private async resume(filePath: string): Promise<void> {
 		if (!this.bridge) return;
-		const terminal = await createPiTerminal(this.bridge, this.context.extensionUri, {
-			sessionFile: filePath,
-		});
+		const terminal = await createPiTerminal(
+			this.bridge,
+			this.context.extensionUri,
+			{
+				sessionFile: filePath,
+			},
+		);
 		terminal?.show();
 	}
 
@@ -225,9 +234,13 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 			vscode.window.showErrorMessage(`Pi: Could not fork session: ${e}`);
 			return;
 		}
-		const terminal = await createPiTerminal(this.bridge, this.context.extensionUri, {
-			sessionFile: dest,
-		});
+		const terminal = await createPiTerminal(
+			this.bridge,
+			this.context.extensionUri,
+			{
+				sessionFile: dest,
+			},
+		);
 		terminal?.show();
 	}
 

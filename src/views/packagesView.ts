@@ -12,7 +12,9 @@ export class PackagesViewProvider implements vscode.WebviewViewProvider {
 		private readonly _bridge: Bridge,
 	) {}
 
-	dispose(): void { this.pkgManager.dispose(); }
+	dispose(): void {
+		this.pkgManager.dispose();
+	}
 
 	resolveWebviewView(view: vscode.WebviewView): void {
 		view.webview.options = { enableScripts: true };
@@ -23,27 +25,29 @@ export class PackagesViewProvider implements vscode.WebviewViewProvider {
 		// Seed installed list on open
 		void this.pkgManager.refreshInstalled(post);
 
-		view.webview.onDidReceiveMessage(async (msg: { type: string; package?: string }) => {
-			switch (msg.type) {
-				case "install":
-					if (msg.package) await this.pkgManager.install(msg.package, post);
-					break;
-				case "uninstall":
-					if (msg.package) await this.pkgManager.uninstall(msg.package, post);
-					break;
-				case "cancel":
-					this.pkgManager.cancel();
-					post({ type: "opEnd" });
-					break;
-				case "upgrade":
-					await this.pkgManager.upgrade();
-					void this.pkgManager.refreshInstalled(post);
-					break;
-				case "refresh":
-					void this.pkgManager.refreshInstalled(post);
-					break;
-			}
-		});
+		view.webview.onDidReceiveMessage(
+			async (msg: { type: string; package?: string }) => {
+				switch (msg.type) {
+					case "install":
+						if (msg.package) await this.pkgManager.install(msg.package, post);
+						break;
+					case "uninstall":
+						if (msg.package) await this.pkgManager.uninstall(msg.package, post);
+						break;
+					case "cancel":
+						this.pkgManager.cancel();
+						post({ type: "opEnd" });
+						break;
+					case "upgrade":
+						await this.pkgManager.upgrade();
+						void this.pkgManager.refreshInstalled(post);
+						break;
+					case "refresh":
+						void this.pkgManager.refreshInstalled(post);
+						break;
+				}
+			},
+		);
 	}
 
 	private html(webview: vscode.Webview): string {
