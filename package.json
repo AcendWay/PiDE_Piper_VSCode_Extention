@@ -2,7 +2,7 @@
   "name": "pi-vscode-sidebar",
   "displayName": "Pi Sidebar",
   "description": "Run the Pi coding agent as a native VS Code terminal with sidebar management: model selector, context indicator, session history, and package marketplace.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": false,
   "publisher": "local",
   "extensionKind": [
@@ -224,7 +224,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p ./",
     "package": "npm run compile && npx @vscode/vsce package --allow-missing-repository --no-git-tag-version",
-    "package-install": "npm run package && code --install-extension pi-vscode-sidebar-0.3.0.vsix"
+    "package-install": "npm run package && code --install-extension pi-vscode-sidebar-0.3.1.vsix"
   },
   "dependencies": {
     "typebox": "^1.0.58"

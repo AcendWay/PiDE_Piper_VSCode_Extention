@@ -193,7 +193,7 @@ function startModelSwitchPolling(pi, terminalId) {
 			// If pi.setModel failed, inject the slash command as a fallback
 			if (!success && typeof pi.sendUserMessage === "function") {
 				try {
-					await pi.sendUserMessage(\`/model \${model}\`, { deliverAs: "followUp" });
+					await pi.sendUserMessage(`/model ${model}`, { deliverAs: "followUp" });
 				} catch {
 					// best-effort
 				}
