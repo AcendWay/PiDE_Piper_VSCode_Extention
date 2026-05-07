@@ -9,7 +9,7 @@
 [![Version](https://img.shields.io/badge/version-0.3.3-6366f1?style=flat-square&logo=visualstudiocode)](https://github.com/AcendWay/PiDE_Piper_VSCode_Extention/releases)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.92+-007ACC?style=flat-square&logo=visualstudiocode)](https://code.visualstudio.com)
 [![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
-[![Pi Agent](https://img.shields.io/badge/powered%20by-pi%20coding%20agent-f97316?style=flat-square)](https://github.com/mariozechner/pi-coding-agent)
+[![Pi Agent](https://img.shields.io/badge/powered%20by-pi%20coding%20agent-f97316?style=flat-square)](https://github.com/earendil-works/pi)
 [![Open Source](https://img.shields.io/badge/open%20source-❤-ec4899?style=flat-square)](https://github.com/AcendWay/PiDE_Piper_VSCode_Extention)
 [![Website](https://img.shields.io/badge/website-PiEDPiPER.dev-6366f1?style=flat-square&logo=googlechrome&logoColor=white)](https://PiEDPiPER.dev)
 
@@ -19,7 +19,7 @@
 
 ## 🧠 What is PiDE Piper?
 
-[Pi](https://github.com/mariozechner/pi-coding-agent) is a terminal-native AI coding agent built for serious developers — a full TUI experience with tools, sessions, packages, and multi-model support baked in. It's fast, extensible, and runs exactly where you want it: in your terminal.
+[Pi](https://github.com/earendil-works/pi) is a terminal-native AI coding agent built for serious developers — a full TUI experience with tools, sessions, packages, and multi-model support baked in. It's fast, extensible, and runs exactly where you want it: in your terminal.
 
 **PiDE Piper** is the VS Code layer that makes pi feel at home in your editor. Not a reimplementation. Not a chat widget. This extension wires pi's existing binary directly into VS Code as a **native terminal tab**, then adds a purpose-built sidebar for everything you'd otherwise do by hand.
 
@@ -117,14 +117,14 @@ Current file path, language, cursor line/column, unsaved indicator, and live err
 
 ---
 
-### 📂 Sidebar: File to Context ⚠️ *(Work in Progress)*
+### 📂 Sidebar: File to Context ⚠️ _(Work in Progress)_
 
 > **Note:** This panel is currently non-functional and under active development. The UI is present but file/image injection into Pi is not yet wired up end-to-end.
 
 A dedicated view for getting content into Pi — clean and focused, no clutter in the main panel.
 
-- **Drop zone** — *(coming soon)* drag images for multimodal analysis; drag files to send their path as context
-- **Send Active Selection** — *(coming soon)* one-click to send what you've highlighted in the editor
+- **Drop zone** — _(coming soon)_ drag images for multimodal analysis; drag files to send their path as context
+- **Send Active Selection** — _(coming soon)_ one-click to send what you've highlighted in the editor
 
 ---
 
@@ -215,11 +215,11 @@ When Pi starts, the extension injects a bridge extension that registers a full s
 
 ## 🔧 Requirements
 
-- **[pi coding agent](https://github.com/mariozechner/pi-coding-agent)** installed globally:
+- **[pi coding agent](https://github.com/earendil-works/pi)** installed globally:
   ```bash
-  npm i -g @mariozechner/pi-coding-agent
+  npm install -g @earendil-works/pi-coding-agent
   # or
-  bun add -g @mariozechner/pi-coding-agent
+  bun add -g @earendil-works/pi-coding-agent
   ```
 - At least one provider API key configured in pi
 - VS Code **1.92+**
@@ -366,7 +366,7 @@ On **Windows with WSL2**, the bridge binds to `0.0.0.0` and Pi uses the Windows 
 - [ ] **Multi-root workspaces** — project cost currently keys off `workspaceFolders[0]`
 - [ ] **Cross-workspace cost dashboard** — per-workspace totals exist; a unified view is future work
 - [ ] **MCP-source tagging** — MCP tool tokens roll into "Tool I/O" until pi exposes an MCP-source distinction
-- [x] ~~Drop zone in Pi Agent panel~~ → moved to its own **File to Context** view *(work in progress)*
+- [x] ~~Drop zone in Pi Agent panel~~ → moved to its own **File to Context** view _(work in progress)_
 - [x] ~~Single-terminal assumption~~ → full multi-tab support
 - [x] ~~Model switch kills terminal~~ → live in-place switching
 
@@ -374,7 +374,7 @@ On **Windows with WSL2**, the bridge binds to `0.0.0.0` and Pi uses the Windows 
 
 ## 🙏 Credits
 
-Built on top of the [**pi coding agent**](https://github.com/mariozechner/pi-coding-agent) by [Mario Zechner](https://github.com/mariozechner). Pi is a fantastic piece of software and this extension exists entirely because of how well it was designed.
+Built on top of the [**pi coding agent**](https://github.com/earendil-works/pi) by [Mario Zechner](https://github.com/mariozechner) / [Earendil Works](https://github.com/earendil-works). Pi is a fantastic piece of software and this extension exists entirely because of how well it was designed.
 
 Inspired by [pithings/pi-vscode](https://github.com/pithings/pi-vscode) and [cdervis/vscode-pi](https://github.com/cdervis/vscode-pi).
 

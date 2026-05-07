@@ -126,8 +126,8 @@ export async function ensurePiBinary(): Promise<string | undefined> {
 	clearPiBinaryCache();
 	const installCmd =
 		choice === "bun"
-			? "bun add -g @mariozechner/pi-coding-agent"
-			: "npm install -g @mariozechner/pi-coding-agent";
+			? "bun add -g @earendil-works/pi-coding-agent"
+			: "npm install -g @earendil-works/pi-coding-agent";
 	const terminal = vscode.window.createTerminal({ name: "Install Pi" });
 	terminal.show();
 	terminal.sendText(installCmd);
@@ -225,8 +225,8 @@ export async function upgradePi(): Promise<void> {
 
 	const upgradeCmd =
 		manager === "bun"
-			? "bun add -g @mariozechner/pi-coding-agent"
-			: "npm install -g @mariozechner/pi-coding-agent";
+			? "bun add -g @earendil-works/pi-coding-agent"
+			: "npm install -g @earendil-works/pi-coding-agent";
 
 	const terminal = vscode.window.createTerminal({ name: "Upgrade Pi" });
 	terminal.show();
