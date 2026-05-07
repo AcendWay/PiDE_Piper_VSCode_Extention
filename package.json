@@ -93,6 +93,10 @@
     "menus": {
       "editor/title": [
         {
+          "command": "piSidebar.open",
+          "group": "navigation"
+        },
+        {
           "command": "piSidebar.openWithFile",
           "group": "navigation",
           "when": "editorIsOpen"
