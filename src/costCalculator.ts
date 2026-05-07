@@ -42,9 +42,7 @@ export function cost(usage: UsageRecord, rates: RateTable): number {
 	const rcr = rates.cacheRead || 0;
 	const rcw = rates.cacheWrite || 0;
 
-	return (
-		(i * ri + o * ro + cr * rcr + cw * rcw) / ONE_MILLION
-	);
+	return (i * ri + o * ro + cr * rcr + cw * rcw) / ONE_MILLION;
 }
 
 /**

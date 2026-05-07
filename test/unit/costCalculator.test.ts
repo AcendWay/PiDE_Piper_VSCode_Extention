@@ -17,10 +17,10 @@ const FREE_RATES: RateTable = {
 
 // Claude Sonnet 4-ish rates for hand-computable tests
 const PAID_RATES: RateTable = {
-	input: 3.0,        // $3 per million input tokens
-	output: 15.0,      // $15 per million output
-	cacheRead: 0.3,    // $0.30 per million cache reads
-	cacheWrite: 3.75,  // $3.75 per million cache writes
+	input: 3.0, // $3 per million input tokens
+	output: 15.0, // $15 per million output
+	cacheRead: 0.3, // $0.30 per million cache reads
+	cacheWrite: 3.75, // $3.75 per million cache writes
 };
 
 describe("costCalculator.cost", () => {
@@ -36,9 +36,9 @@ describe("costCalculator.cost", () => {
 
 	it("paid model with all four rate fields — hand-computable", () => {
 		const usage: UsageRecord = {
-			input: 1_000_000,    // $3.00
-			output: 200_000,     // $3.00
-			cacheRead: 500_000,  // $0.15
+			input: 1_000_000, // $3.00
+			output: 200_000, // $3.00
+			cacheRead: 500_000, // $0.15
 			cacheWrite: 100_000, // $0.375
 		};
 		// Expected: 3.00 + 3.00 + 0.15 + 0.375 = $6.525
@@ -60,7 +60,7 @@ describe("costCalculator.cost", () => {
 		const usage: UsageRecord = {
 			input: 100,
 			output: 100,
-			cacheRead: 1_000_000,  // $0.30 — the bulk
+			cacheRead: 1_000_000, // $0.30 — the bulk
 			cacheWrite: 0,
 		};
 		// 0.0003 + 0.0015 + 0.30 + 0 ≈ $0.3018

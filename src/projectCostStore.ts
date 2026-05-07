@@ -46,8 +46,9 @@ export class ProjectCostStore {
 	) {}
 
 	getTotal(): ProjectCostTotal {
-		return this.state.get<ProjectCostTotal>(key(this.workspaceRoot)) ??
-			emptyTotal();
+		return (
+			this.state.get<ProjectCostTotal>(key(this.workspaceRoot)) ?? emptyTotal()
+		);
 	}
 
 	/**
@@ -72,7 +73,8 @@ export class ProjectCostStore {
 	 * the persisted total to max(persisted, reconciled). Self-healing.
 	 */
 	async reconcileFromSessions(sessionsDir?: string): Promise<void> {
-		const dir = sessionsDir ?? path.join(os.homedir(), ".pi", "agent", "sessions");
+		const dir =
+			sessionsDir ?? path.join(os.homedir(), ".pi", "agent", "sessions");
 		if (!fs.existsSync(dir)) return;
 
 		let totalCost = 0;
@@ -94,7 +96,9 @@ export class ProjectCostStore {
 					continue;
 				}
 				const subPath = path.join(dir, sd.name);
-				const sessions = fs.readdirSync(subPath).filter((f) => f.endsWith(".jsonl"));
+				const sessions = fs
+					.readdirSync(subPath)
+					.filter((f) => f.endsWith(".jsonl"));
 				for (const session of sessions) {
 					const filePath = path.join(subPath, session);
 					try {
@@ -183,13 +187,17 @@ export class ProjectCostStore {
 	 * List recent sessions for this workspace with summary info.
 	 * Used by the [history ↗] quick-pick.
 	 */
-	listRecentSessions(sessionsDir?: string, limit = 50): Array<{
+	listRecentSessions(
+		sessionsDir?: string,
+		limit = 50,
+	): Array<{
 		filePath: string;
 		date: string;
 		cost: number;
 		tokens: number;
 	}> {
-		const dir = sessionsDir ?? path.join(os.homedir(), ".pi", "agent", "sessions");
+		const dir =
+			sessionsDir ?? path.join(os.homedir(), ".pi", "agent", "sessions");
 		if (!fs.existsSync(dir)) return [];
 
 		const results: Array<{
@@ -205,7 +213,9 @@ export class ProjectCostStore {
 			for (const sd of subdirs) {
 				if (!sd.isDirectory()) continue;
 				const subPath = path.join(dir, sd.name);
-				const sessions = fs.readdirSync(subPath).filter((f) => f.endsWith(".jsonl"));
+				const sessions = fs
+					.readdirSync(subPath)
+					.filter((f) => f.endsWith(".jsonl"));
 				for (const session of sessions) {
 					const filePath = path.join(subPath, session);
 					try {
