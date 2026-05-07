@@ -2,7 +2,6 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Buffer } from "node:buffer";
 import * as vscode from "vscode";
 import type { Bridge } from "../bridge/server";
 import {
@@ -195,46 +194,6 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 				await createPiTerminal(this.bridge, this.context.extensionUri);
 				this.notifyTerminalState(true);
 				break;
-			case "dropFile": {
-				let { filePath } = msg;
-				const { isImage, fileName, fileBase64 } = msg;
-				const terminal = findPiTerminal();
-				if (!terminal) {
-					vscode.window.showWarningMessage(
-						"Pi: No terminal running. Open the Pi Agent terminal first.",
-					);
-					break;
-				}
-				// If we got base64 contents but no path (OS file-manager drop in webview
-				// — Electron strips File.path), persist to a tmp file and use that.
-				if (!filePath && fileBase64 && fileName) {
-					try {
-						const tmpDir = path.join(os.tmpdir(), "pi-vscode-drops");
-						fs.mkdirSync(tmpDir, { recursive: true });
-						const safeName = fileName.replace(/[^A-Za-z0-9._-]/g, "_");
-						const tmpPath = path.join(tmpDir, `${Date.now()}-${safeName}`);
-						fs.writeFileSync(tmpPath, Buffer.from(fileBase64, "base64"));
-						filePath = tmpPath;
-					} catch (err) {
-						vscode.window.showErrorMessage(
-							`Pi: Failed to stash dropped file: ${(err as Error).message}`,
-						);
-						break;
-					}
-				}
-				if (!filePath) {
-					vscode.window.showWarningMessage(
-						"Pi: Dropped item had no readable path or content.",
-					);
-					break;
-				}
-				if (isImage) {
-					terminal.sendText(`[Image attached: ${filePath}]`, true);
-				} else {
-					terminal.sendText(`[File context: ${filePath}]`, true);
-				}
-				break;
-			}
 			case "ready": {
 				// Webview reloaded — push current state
 				this.post({ type: "terminalState", running: this.terminalRunning });
@@ -471,27 +430,6 @@ select:focus { border-color: var(--vscode-focusBorder); }
 .errors { color: var(--vscode-testing-iconFailed, #f44747); font-size: 10px; flex-shrink: 0; }
 .warns  { color: #e5a731; font-size: 10px; flex-shrink: 0; }
 
-/* ── Drop zone ── */
-.drop-zone {
-  border: 1.5px dashed var(--vscode-input-border, rgba(128,128,128,0.45));
-  border-radius: 6px;
-  padding: 18px 12px;
-  text-align: center;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-  background: var(--vscode-input-background);
-  transition: all 0.15s ease;
-  cursor: copy;
-  user-select: none;
-}
-.drop-zone:hover { border-color: var(--vscode-focusBorder, #007acc); color: var(--vscode-foreground); }
-.drop-zone.over {
-  border-color: var(--vscode-focusBorder, #007acc);
-  background: var(--vscode-list-dropBackground, rgba(0,122,204,0.12));
-  color: var(--vscode-foreground);
-}
-.drop-zone.success { border-color: var(--vscode-testing-iconPassed, #89d185); color: var(--vscode-testing-iconPassed, #89d185); }
-.drop-zone.error   { border-color: var(--vscode-testing-iconFailed, #f44747); color: var(--vscode-testing-iconFailed, #f44747); }
 
 /* ── Quick actions ── */
 .actions {
@@ -573,14 +511,6 @@ button.action:disabled { opacity: 0.38; cursor: default; }
   <div class="section-label">Active File</div>
   <div class="file-row" id="fileRow">
     <span class="file-none">No active editor</span>
-  </div>
-</div>
-
-<!-- Drop zone -->
-<div class="section">
-  <div class="section-label">Drop Files</div>
-  <div class="drop-zone" id="dropZone">
-    <span id="dropLabel">Drop files here</span>
   </div>
 </div>
 
@@ -722,180 +652,7 @@ window.addEventListener('message', e => {
   }
 });
 
-// ── Drop zone ─────────────────────────────────────────────────────────
-const IMAGE_EXTS = new Set(['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp']);
-const DEFAULT_DROP_LABEL = 'Drop files here';
-const dropZone = document.getElementById('dropZone');
-const dropLabel = document.getElementById('dropLabel');
 
-function extOf(name) {
-  const i = name.lastIndexOf('.');
-  return i >= 0 ? name.slice(i).toLowerCase() : '';
-}
-
-function setDropState(state, text) {
-  dropZone.className = 'drop-zone' + (state ? ' ' + state : '');
-  dropLabel.textContent = text || DEFAULT_DROP_LABEL;
-}
-
-function resetDropLater(ms) {
-  setTimeout(() => setDropState('', DEFAULT_DROP_LABEL), ms);
-}
-
-// Convert a file:// URI to an OS path (handles encoded chars and Windows drive letters)
-function fileUriToPath(uri) {
-  try {
-    if (!uri.startsWith('file://')) return uri;
-    let p = decodeURIComponent(uri.slice(7));
-    // Strip leading slash on Windows drive paths: /C:/foo -> C:/foo
-    if (/^\\/[A-Za-z]:/.test(p)) p = p.slice(1);
-    return p;
-  } catch {
-    return uri;
-  }
-}
-
-// Read a File as base64 (for OS drops where File.path is empty in webviews)
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result || '';
-      const comma = String(result).indexOf(',');
-      resolve(comma >= 0 ? String(result).slice(comma + 1) : '');
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-// Pull dropped items: prefer paths, fall back to in-memory File objects.
-// Returns { items: [{ path?, file?, name }], debug: string }
-function extractDroppedItems(dt) {
-  const items = [];
-  const seen = new Set();
-  const dbg = [];
-  if (!dt) return { items, debug: 'no DataTransfer' };
-
-  dbg.push('types=[' + Array.from(dt.types || []).join(',') + ']');
-  dbg.push('files=' + (dt.files ? dt.files.length : 0));
-
-  // 1. URI lists — VS Code Explorer drags expose this; gives a real fs path.
-  for (const fmt of ['application/vnd.code.uri-list', 'text/uri-list']) {
-    const raw = dt.getData(fmt);
-    if (!raw) continue;
-    for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const fp = fileUriToPath(trimmed);
-      if (!fp || seen.has(fp)) continue;
-      seen.add(fp);
-      items.push({ path: fp, name: fp.split(/[\\/]/).pop() || fp });
-    }
-  }
-
-  // 2. Native File objects (OS file manager drops).
-  //    In modern Electron webviews File.path is empty, so we keep the File
-  //    around and the extension host will save it to a tmp file.
-  for (const file of Array.from(dt.files || [])) {
-    const p = file.path || '';
-    if (p) {
-      if (!seen.has(p)) {
-        seen.add(p);
-        items.push({ path: p, name: file.name });
-      }
-    } else if (!seen.has('blob:' + file.name + ':' + file.size)) {
-      seen.add('blob:' + file.name + ':' + file.size);
-      items.push({ file, name: file.name });
-    }
-  }
-
-  // 3. Plain text fallback (paths copied/dragged as text).
-  if (!items.length) {
-    const txt = dt.getData('text/plain');
-    if (txt && (txt.startsWith('/') || /^[A-Za-z]:[\\/]/.test(txt) || txt.startsWith('file://'))) {
-      const fp = fileUriToPath(txt.trim());
-      items.push({ path: fp, name: fp.split(/[\\/]/).pop() || fp });
-    }
-  }
-
-  dbg.push('items=' + items.length);
-  return { items, debug: dbg.join(' ') };
-}
-
-['dragenter', 'dragover'].forEach(ev => {
-  dropZone.addEventListener(ev, e => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-    dropZone.classList.add('over');
-  });
-});
-['dragleave', 'dragend'].forEach(ev => {
-  dropZone.addEventListener(ev, e => {
-    e.preventDefault();
-    dropZone.classList.remove('over');
-  });
-});
-
-dropZone.addEventListener('drop', async (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  dropZone.classList.remove('over');
-
-  if (!isRunning) {
-    setDropState('error', '⚠ No Pi terminal running');
-    resetDropLater(2000);
-    return;
-  }
-
-  const { items, debug } = extractDroppedItems(e.dataTransfer);
-  // Helpful when triaging future drag/drop issues — visible in webview devtools.
-  console.log('[Pi drop]', debug);
-
-  if (!items.length) {
-    setDropState('error', 'Nothing droppable detected (' + debug + ')');
-    resetDropLater(3000);
-    return;
-  }
-
-  setDropState('over', 'Reading …');
-  let imageCount = 0;
-  let fileCount = 0;
-  try {
-    for (const item of items) {
-      const isImage = IMAGE_EXTS.has(extOf(item.name));
-      if (item.path) {
-        send('dropFile', { filePath: item.path, isImage });
-      } else if (item.file) {
-        // Webview can't see the OS path — ship the bytes to the extension host.
-        const base64 = await fileToBase64(item.file);
-        send('dropFile', {
-          fileName: item.name,
-          fileBase64: base64,
-          isImage,
-        });
-      } else {
-        continue;
-      }
-      if (isImage) imageCount++; else fileCount++;
-    }
-  } catch (err) {
-    setDropState('error', 'Read failed: ' + (err && err.message ? err.message : err));
-    resetDropLater(2500);
-    return;
-  }
-
-  const parts = [];
-  if (imageCount) parts.push(imageCount + ' image' + (imageCount > 1 ? 's' : ''));
-  if (fileCount)  parts.push(fileCount + ' file' + (fileCount > 1 ? 's' : ''));
-  setDropState('success', '✓ Sent ' + parts.join(' + '));
-  resetDropLater(1800);
-});
-
-// Block the global window from hijacking the drop (otherwise VS Code may open the file)
-window.addEventListener('dragover', e => e.preventDefault());
-window.addEventListener('drop', e => e.preventDefault());
 
 send('ready');
 </script>
@@ -918,10 +675,6 @@ export interface FileStatus {
 interface WebviewMessage {
 	type: string;
 	model?: string;
-	filePath?: string;
-	isImage?: boolean;
-	fileName?: string;
-	fileBase64?: string;
 }
 
 function esc(s: string): string {

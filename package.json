@@ -41,6 +41,11 @@
         },
         {
           "type": "webview",
+          "id": "piSidebar.dropzone",
+          "name": "Drop Context"
+        },
+        {
+          "type": "webview",
           "id": "piSidebar.models",
           "name": "Models"
         }

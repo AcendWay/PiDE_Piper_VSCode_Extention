@@ -19,6 +19,7 @@ import {
 	restartPiTerminal,
 } from "./terminal";
 import { ControlViewProvider, type FileStatus } from "./views/controlView";
+import { DropzoneViewProvider } from "./views/dropzoneView";
 import { SessionTracker } from "./sessions";
 import { ModelsViewProvider } from "./views/modelsView";
 import { PackagesViewProvider } from "./views/packagesView";
@@ -27,6 +28,7 @@ import { SessionsViewProvider } from "./views/sessionsView";
 let bridge: Bridge | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let controlView: ControlViewProvider | undefined;
+let dropzoneView: DropzoneViewProvider | undefined;
 let sessionsView: SessionsViewProvider | undefined;
 let packagesView: PackagesViewProvider | undefined;
 let modelsView: ModelsViewProvider | undefined;
@@ -46,6 +48,7 @@ export async function activate(
 
 	// ── Sidebar views ────────────────────────────────────────────────────────
 	controlView = new ControlViewProvider(context, bridge);
+	dropzoneView = new DropzoneViewProvider(context);
 	sessionsView = new SessionsViewProvider(context, bridge, sessionTracker);
 	packagesView = new PackagesViewProvider(context, bridge);
 	modelsView = new ModelsViewProvider(context, async (model) => {
@@ -57,6 +60,10 @@ export async function activate(
 		vscode.window.registerWebviewViewProvider(
 			ControlViewProvider.viewType,
 			controlView,
+		),
+		vscode.window.registerWebviewViewProvider(
+			DropzoneViewProvider.viewType,
+			dropzoneView,
 		),
 		vscode.window.registerWebviewViewProvider(
 			SessionsViewProvider.viewType,
@@ -235,6 +242,7 @@ export async function activate(
 				terminal.name.startsWith("Pi Agent")
 			) {
 				controlView?.notifyTerminalState(true);
+				dropzoneView?.notifyTerminalState(true);
 			}
 		}),
 		vscode.window.onDidCloseTerminal((terminal) => {
@@ -243,12 +251,10 @@ export async function activate(
 				terminal.name.startsWith("Pi Agent")
 			) {
 				sessionTracker?.onClose(terminal);
-				// During a restart the old terminal closes while a new one is
-				// already being created — don't flip the dot to red just to flip
-				// it back. Re-check after the new terminal has had a chance
-				// to register.
 				setTimeout(() => {
-					controlView?.notifyTerminalState(!!findPiTerminal());
+					const running = !!findPiTerminal();
+					controlView?.notifyTerminalState(running);
+					dropzoneView?.notifyTerminalState(running);
 				}, 250);
 			}
 		}),
