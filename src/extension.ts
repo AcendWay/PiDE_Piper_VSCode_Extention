@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { transition, INITIAL_SNAPSHOT } from "./agentStateMachine";
 import { buildTabName, DEFAULT_PALETTE } from "./tabPalette";
 import { rewindOneTurn, SessionRewindError } from "./sessionRewind";
+import { ProjectCostStore } from "./projectCostStore";
 import type { AgentEvent } from "./agentStateMachine";
 import { upsertTab } from "./bridge/state";
 import { createBridge } from "./bridge/server";
@@ -35,6 +36,7 @@ import { PackagesViewProvider } from "./views/packagesView";
 import { SessionsViewProvider } from "./views/sessionsView";
 
 let bridge: Bridge | undefined;
+let projectCostStore: ProjectCostStore | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let controlView: ControlViewProvider | undefined;
 let dropzoneView: DropzoneViewProvider | undefined;
@@ -48,6 +50,8 @@ const closeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Per-terminal state machine snapshots (used for idle timer management). */
 const stateMachineSnapshots = new Map<string, import("./agentStateMachine").StateMachineSnapshot>();
+/** Per-terminal last-reported total token count for token-delta computation. */
+const lastReportedTokens = new Map<string, number>();
 let sessionsView: SessionsViewProvider | undefined;
 let packagesView: PackagesViewProvider | undefined;
 let modelsView: ModelsViewProvider | undefined;
@@ -61,6 +65,15 @@ export async function activate(
 	bridge = await createBridge(context, (terminalId, sessionFile) => {
 		sessionTracker?.track(terminalId, sessionFile);
 	});
+
+	// Initialize project cost store + reconcile in background (non-blocking)
+	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+	if (workspaceRoot) {
+		projectCostStore = new ProjectCostStore(context.workspaceState, workspaceRoot);
+		void projectCostStore.reconcileFromSessions().then(() => {
+			controlView?.notifyProjectCost(projectCostStore!.getTotal());
+		}).catch((err) => console.error("Pi: cost reconcile failed", err));
+	}
 
 	// ── Bridge event listeners (notifications + selection cache) ────────────────
 	registerBridgeListeners(context, bridge.state);
@@ -93,6 +106,18 @@ export async function activate(
 			bridge!.state.tabs.toArray(),
 			bridge!.state.currentTerminalId,
 		);
+
+		// ── Cost increment (Slice #23) ─────────────────────────────────────
+		if (tab.cost?.lastDelta && projectCostStore) {
+			const tokenDelta = tab.breakdown?.totalTokens
+				? Math.max(0, tab.breakdown.totalTokens - (lastReportedTokens.get(terminalId) ?? 0))
+				: 0;
+			lastReportedTokens.set(terminalId, tab.breakdown?.totalTokens ?? 0);
+			void projectCostStore
+				.increment(tab.cost.lastDelta, tokenDelta)
+				.then(() => controlView?.notifyProjectCost(projectCostStore!.getTotal()))
+				.catch((err) => console.error("Pi: cost increment failed", err));
+		}
 
 		// ── Model confirmed ───────────────────────────────────────────────
 		if (tab.model && modelFallback !== undefined) {
@@ -376,6 +401,38 @@ export async function activate(
 			},
 		),
 
+		vscode.commands.registerCommand("piSidebar.refreshProjectCost", () => {
+			if (projectCostStore) controlView?.notifyProjectCost(projectCostStore.getTotal());
+		}),
+
+		vscode.commands.registerCommand("piSidebar.showCostHistory", async () => {
+			if (!projectCostStore) {
+				vscode.window.showInformationMessage("Pi: No workspace open — cost history unavailable.");
+				return;
+			}
+			const sessions = projectCostStore.listRecentSessions();
+			if (!sessions.length) {
+				vscode.window.showInformationMessage("Pi: No sessions found for this workspace.");
+				return;
+			}
+			const items: vscode.QuickPickItem[] = sessions.map((s) => ({
+				label: `$${s.cost.toFixed(s.cost < 0.01 ? 4 : s.cost < 1 ? 3 : 2)} · ${formatTokens(s.tokens)} tokens`,
+				description: s.date,
+				detail: s.filePath,
+			}));
+			const picked = await vscode.window.showQuickPick(items, {
+				placeHolder: "Recent Pi sessions — select to resume",
+				matchOnDescription: true,
+				matchOnDetail: true,
+			});
+			if (!picked || !picked.detail || !bridge) return;
+			// Resume via createPiTerminal (same path the Sessions view uses)
+			const res = await createPiTerminal(bridge, context.extensionUri, {
+				sessionFile: picked.detail,
+			});
+			if (res) registerPiTerminal(res.terminal, res.terminalId);
+		}),
+
 		vscode.commands.registerCommand("piSidebar.upgrade", async () => {
 			await upgradePi();
 		}),
@@ -578,6 +635,13 @@ export async function deactivate(): Promise<void> {
 
 async function revealSidebar(): Promise<void> {
 	await vscode.commands.executeCommand("workbench.view.extension.piSidebar");
+}
+
+function formatTokens(n: number): string {
+	if (!n) return "0";
+	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+	if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+	return String(Math.round(n));
 }
 
 function commonModels(): string[] {

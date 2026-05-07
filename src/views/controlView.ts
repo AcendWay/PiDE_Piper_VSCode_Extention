@@ -161,6 +161,16 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 		this.post({ type: "showCostChanged", showCost });
 	}
 
+	/** Push project-lifetime cost totals to the webview. */
+	notifyProjectCost(total: {
+		totalCost: number;
+		totalTokens: number;
+		sessionCount: number;
+		lastUpdated?: string;
+	}): void {
+		this.post({ type: "projectCost", total });
+	}
+
 	notifyFileStatus(status: FileStatus | null): void {
 		this.post({ type: "fileStatus", status });
 	}
@@ -218,6 +228,9 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 			case "restartSession":
 				await vscode.commands.executeCommand("piSidebar.restartSession");
 				break;
+			case "showCostHistory":
+				await vscode.commands.executeCommand("piSidebar.showCostHistory");
+				break;
 			case "sendContext":
 				await vscode.commands.executeCommand("piSidebar.sendSelection");
 				break;
@@ -247,6 +260,8 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 					this.bridge.state.tabs.toArray(),
 					this.bridge.state.currentTerminalId,
 				);
+				// Ask extension to push project cost (via command)
+				void vscode.commands.executeCommand("piSidebar.refreshProjectCost");
 				break;
 			}
 		}
@@ -531,6 +546,31 @@ select:focus { border-color: var(--vscode-focusBorder); }
 .ctx-tooltip-label { color: var(--vscode-descriptionForeground); }
 .ctx-tooltip-val   { font-variant-numeric: tabular-nums; }
 
+/* ── Project lifetime row ── */
+.proj-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  padding: 2px 0;
+  font-variant-numeric: tabular-nums;
+}
+.proj-row.hidden { display: none; }
+.proj-row .proj-label { font-weight: 600; opacity: 0.85; }
+.proj-row .proj-stats { flex: 1; margin: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-row .proj-history-btn {
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 1px 3px;
+  font-family: inherit;
+  border-radius: 2px;
+}
+.proj-row .proj-history-btn:hover { background: var(--vscode-toolbar-hoverBackground); text-decoration: underline; }
+
 /* ── File status ── */
 .file-row {
   font-size: 11px;
@@ -660,6 +700,13 @@ button.action:disabled { opacity: 0.38; cursor: default; }
       <div class="ctx-tooltip-row"><span class="ctx-tooltip-label">Cache (overlay)</span><span class="ctx-tooltip-val" id="tipCache">0</span></div>
     </div>
   </div>
+</div>
+
+<!-- Project-lifetime cost row -->
+<div class="proj-row hidden" id="projRow">
+  <span class="proj-label">Project</span>
+  <span class="proj-stats" id="projStats">$0.00 · 0 tokens · 0 sessions</span>
+  <button class="proj-history-btn" id="projHistoryBtn" title="Show recent sessions and their costs">history ↗</button>
 </div>
 
 <!-- Active file status -->
@@ -918,8 +965,32 @@ window.addEventListener('message', e => {
         updateBreakdown(msg.activeTabBreakdown, msg.activeTabCost);
       }
       break;
-    case 'showCostChanged': _showCost = msg.showCost; if (_lastBreakdown) updateBreakdown(_lastBreakdown, _lastCost); break;
+    case 'showCostChanged': _showCost = msg.showCost; if (_lastBreakdown) updateBreakdown(_lastBreakdown, _lastCost); updateProjectRow(_lastProjectTotal); break;
+    case 'projectCost':     updateProjectRow(msg.total); break;
   }
+});
+
+let _lastProjectTotal = null;
+
+function updateProjectRow(total) {
+  _lastProjectTotal = total;
+  const row = document.getElementById('projRow');
+  const stats = document.getElementById('projStats');
+  if (!row || !stats) return;
+  const cost = total?.totalCost || 0;
+  if (!_showCost || cost <= 0) {
+    row.classList.add('hidden');
+    return;
+  }
+  row.classList.remove('hidden');
+  stats.textContent =
+    fmtCost(cost) + ' · ' +
+    fmtTokens(total.totalTokens || 0) + ' tokens · ' +
+    (total.sessionCount || 0) + ' session' + ((total.sessionCount || 0) === 1 ? '' : 's');
+}
+
+document.getElementById('projHistoryBtn')?.addEventListener('click', () => {
+  send('showCostHistory');
 });
 
 
