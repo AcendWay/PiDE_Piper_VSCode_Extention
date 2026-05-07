@@ -165,6 +165,18 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 				await createPiTerminal(this.bridge, this.context.extensionUri);
 				this.notifyTerminalState(true);
 				break;
+			case "dropFile": {
+				const { filePath, isImage } = msg;
+				if (!filePath) break;
+				const terminal = findPiTerminal();
+				if (!terminal) break;
+				if (isImage) {
+					terminal.sendText(`[Image attached: ${filePath}]`, true);
+				} else {
+					terminal.sendText(`[File context: ${filePath}]`, true);
+				}
+				break;
+			}
 			case "ready": {
 				// Webview reloaded — push current state
 				this.post({ type: "terminalState", running: this.terminalRunning });
@@ -224,7 +236,7 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src data: vscode-file:;">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -453,6 +465,15 @@ button.action:disabled { opacity: 0.38; cursor: default; }
   </div>
 </div>
 
+<!-- Drop zone -->
+<div class="section">
+  <div class="section-label">Drop Files</div>
+  <div class="drop-zone" id="dropZone">
+    <img class="drop-thumb" id="dropThumb" alt="preview">
+    <div id="dropLabel">🖼 Drop image for vision &nbsp;·&nbsp; 📄 Drop file for context</div>
+  </div>
+</div>
+
 <!-- Quick actions -->
 <div class="section">
   <div class="actions">
@@ -583,6 +604,68 @@ window.addEventListener('message', e => {
   }
 });
 
+// Drop zone
+const IMAGE_EXTS = new Set(['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp']);
+const dropZone = document.getElementById('dropZone');
+const dropThumb = document.getElementById('dropThumb');
+const dropLabel = document.getElementById('dropLabel');
+
+function extOf(name) {
+  const i = name.lastIndexOf('.');
+  return i >= 0 ? name.slice(i).toLowerCase() : '';
+}
+
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', async e => {
+  e.preventDefault();
+  dropZone.classList.remove('over');
+  const files = Array.from(e.dataTransfer?.files ?? []);
+  if (!files.length) return;
+
+  if (!isRunning) {
+    setDropState('error', '⚠ No Pi terminal running');
+    return;
+  }
+
+  for (const file of files) {
+    const isImage = IMAGE_EXTS.has(extOf(file.name));
+    // In VS Code's Electron environment, File objects have a .path property
+    const filePath = (file).path || file.name;
+
+    if (isImage) {
+      // Show thumbnail preview briefly
+      const reader = new FileReader();
+      reader.onload = ev => {
+        dropThumb.src = ev.target?.result;
+        dropThumb.classList.add('visible');
+        dropLabel.style.display = 'none';
+        setTimeout(() => {
+          dropThumb.classList.remove('visible');
+          dropThumb.src = '';
+          dropLabel.style.display = '';
+          setDropState('', '🖼 Drop image for vision · 📄 Drop file for context');
+        }, 1500);
+      };
+      reader.readAsDataURL(file);
+      send('dropFile', { filePath, isImage: true });
+      setDropState('success', '✓ Image attached');
+    } else {
+      send('dropFile', { filePath, isImage: false });
+      setDropState('success', '✓ File path sent: ' + file.name);
+      setTimeout(() => setDropState('', '🖼 Drop image for vision · 📄 Drop file for context'), 1500);
+    }
+  }
+});
+
+function setDropState(state, text) {
+  dropZone.className = 'drop-zone' + (state ? ' ' + state : '');
+  dropLabel.textContent = text;
+}
+
 send('ready');
 </script>
 </body>
@@ -604,6 +687,8 @@ export interface FileStatus {
 interface WebviewMessage {
 	type: string;
 	model?: string;
+	filePath?: string;
+	isImage?: boolean;
 }
 
 function esc(s: string): string {
