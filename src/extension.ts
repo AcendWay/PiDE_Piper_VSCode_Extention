@@ -19,6 +19,7 @@ import {
 	restartPiTerminal,
 } from "./terminal";
 import { ControlViewProvider, type FileStatus } from "./views/controlView";
+import { SessionTracker } from "./sessions";
 import { PackagesViewProvider } from "./views/packagesView";
 import { SessionsViewProvider } from "./views/sessionsView";
 
@@ -27,15 +28,15 @@ let statusBarItem: vscode.StatusBarItem | undefined;
 let controlView: ControlViewProvider | undefined;
 let sessionsView: SessionsViewProvider | undefined;
 let packagesView: PackagesViewProvider | undefined;
+let sessionTracker: SessionTracker | undefined;
 
 export async function activate(
 	context: vscode.ExtensionContext,
 ): Promise<void> {
 	// ── Bridge ──────────────────────────────────────────────────────────────
+	sessionTracker = new SessionTracker(context);
 	bridge = await createBridge(context, (terminalId, sessionFile) => {
-		// Will be wired to session tracker in Phase 3 (#10)
-		void terminalId;
-		void sessionFile;
+		sessionTracker?.track(terminalId, sessionFile);
 	});
 
 	// ── Bridge event listeners (notifications + selection cache) ────────────────
@@ -211,8 +212,9 @@ export async function activate(
 	// ── Terminal close listener ──────────────────────────────────────────────
 	context.subscriptions.push(
 		vscode.window.onDidCloseTerminal((terminal) => {
-			if (terminal.name === "Pi Agent") {
+			if (terminal.name === "Pi Agent" || terminal.name.startsWith("Pi Agent")) {
 				controlView?.notifyTerminalState(false);
+				sessionTracker?.onClose(terminal);
 			}
 		}),
 	);
@@ -248,6 +250,11 @@ export async function activate(
 		vscode.workspace.onDidChangeTextDocument(() => pushFileStatus()),
 	);
 	pushFileStatus(); // seed on startup
+
+	// ── Restore sessions from previous VS Code window ──────────────────
+	if (vscode.workspace.getConfiguration("piSidebar").get<boolean>("restoreSessions", true)) {
+		void sessionTracker.restore(bridge, context.extensionUri);
+	}
 
 	// ── Show sidebar on startup if configured ────────────────────────────────
 	const cfg = vscode.workspace.getConfiguration("piSidebar");

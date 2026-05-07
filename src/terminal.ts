@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
@@ -30,6 +31,7 @@ export async function focusOrCreateTerminal(
 		model?: string;
 		extraArgs?: string[];
 		contextLines?: string[];
+		terminalId?: string;
 	} = {},
 ): Promise<vscode.Terminal | undefined> {
 	// Reuse existing Pi terminal if one is running and no specific session/model requested
@@ -54,6 +56,7 @@ export async function createPiTerminal(
 		model?: string;
 		extraArgs?: string[];
 		contextLines?: string[];
+		terminalId?: string;
 	} = {},
 ): Promise<vscode.Terminal | undefined> {
 	const piPath = await ensurePiBinary();
@@ -90,7 +93,8 @@ export async function createPiTerminal(
 		piArgs.push("--append-system-prompt", options.contextLines.join("\n\n"));
 	}
 
-	const env = buildPiEnv(bridgeConfig);
+	const terminalId = options.terminalId ?? crypto.randomUUID();
+	const env = { ...buildPiEnv(bridgeConfig), PI_VSCODE_TERMINAL_ID: terminalId };
 
 	let shellPath: string;
 	let shellArgs: string[];

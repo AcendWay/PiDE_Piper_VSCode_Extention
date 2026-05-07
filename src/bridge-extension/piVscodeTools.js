@@ -575,6 +575,19 @@ module.exports = (pi) => {
 		},
 	});
 
+	// ── Session file reporting ────────────────────────────────────────────────
+	// pi exposes a hook for when the session file is determined. We use
+	// PI_VSCODE_TERMINAL_ID (set per-terminal by the extension) to correlate
+	// the terminal instance with its session file.
+	const terminalId = process.env.PI_VSCODE_TERMINAL_ID || "";
+	if (terminalId && typeof pi.onSessionFile === "function") {
+		pi.onSessionFile((sessionFile) => {
+			callVsCode("reportTerminalSession", { terminalId, sessionFile }).catch(
+				() => {},
+			);
+		});
+	}
+
 	pi.registerTool({
 		name: "vscode_report_context_usage",
 		label: "Report Context Usage",
