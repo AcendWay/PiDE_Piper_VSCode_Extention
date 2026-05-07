@@ -38,6 +38,11 @@
           "type": "webview",
           "id": "piSidebar.packages",
           "name": "Packages"
+        },
+        {
+          "type": "webview",
+          "id": "piSidebar.models",
+          "name": "Models"
         }
       ]
     },

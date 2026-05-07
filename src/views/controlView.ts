@@ -1,4 +1,7 @@
 import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import type { Bridge } from "../bridge/server";
 import {
@@ -13,20 +16,56 @@ import {
 const RECENT_MODELS_KEY = "piSidebar.recentModels";
 const MAX_RECENT = 5;
 
-const COMMON_MODELS = [
-	"claude-sonnet-4",
-	"claude-opus-4",
-	"claude-haiku-3-5",
-	"claude-sonnet-3-7",
-	"gemini-2.5-pro",
-	"gemini-2.5-flash",
-	"gpt-4o",
-	"gpt-4o-mini",
-	"o3",
-	"o4-mini",
-	"grok-3",
-	"deepseek-r2",
-];
+/**
+ * Read the user's actual enabled models from pi's settings.json.
+ * Falls back to a minimal hardcoded list if the file isn't found.
+ */
+function getPiEnabledModels(): string[] {
+	const settingsPath = path.join(
+		os.homedir(),
+		".pi",
+		"agent",
+		"settings.json",
+	);
+	try {
+		const raw = fs.readFileSync(settingsPath, "utf8");
+		const settings = JSON.parse(raw) as {
+			enabledModels?: string[];
+			defaultModel?: string;
+			defaultProvider?: string;
+		};
+		const enabled = settings.enabledModels ?? [];
+		if (enabled.length > 0) return enabled;
+	} catch {
+		// settings.json missing or malformed — fall through to defaults
+	}
+	// Minimal fallback when pi isn't configured yet
+	return [
+		"claude-sonnet-4.6",
+		"claude-opus-4.7",
+		"gemini-2.5-pro",
+		"gpt-4o",
+	];
+}
+
+/**
+ * Read the default model pi is currently configured to use.
+ */
+function getPiDefaultModel(): string {
+	const settingsPath = path.join(
+		os.homedir(),
+		".pi",
+		"agent",
+		"settings.json",
+	);
+	try {
+		const raw = fs.readFileSync(settingsPath, "utf8");
+		const settings = JSON.parse(raw) as { defaultModel?: string };
+		return settings.defaultModel ?? "";
+	} catch {
+		return "";
+	}
+}
 
 function getRecentModels(context: vscode.ExtensionContext): string[] {
 	return context.globalState.get<string[]>(RECENT_MODELS_KEY, []);
@@ -49,6 +88,7 @@ function buildModelList(
 	current: string,
 ): { value: string; label: string; group: string }[] {
 	const recent = getRecentModels(context);
+	const piModels = getPiEnabledModels();
 	const seen = new Set<string>();
 	const items: { value: string; label: string; group: string }[] = [];
 
@@ -60,7 +100,7 @@ function buildModelList(
 
 	if (current) add(current, "current");
 	for (const m of recent) add(m, "recent");
-	for (const m of COMMON_MODELS) add(m, "common");
+	for (const m of piModels) add(m, "pi-config");
 
 	return items;
 }
@@ -197,7 +237,7 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	/** Persist model, update command palette, restart terminal. */
-	private async applyModel(model: string): Promise<void> {
+	async applyModel(model: string): Promise<void> {
 		if (!model) return;
 		const cfg = vscode.workspace.getConfiguration("piSidebar");
 		await cfg.update("defaultModel", model, vscode.ConfigurationTarget.Global);
@@ -226,7 +266,9 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 	private html(webview: vscode.Webview): string {
 		const nonce = crypto.randomBytes(16).toString("hex");
 		const cfg = vscode.workspace.getConfiguration("piSidebar");
-		const currentModel = cfg.get<string>("defaultModel", "") || "";
+		// Prefer VS Code setting override, then fall back to pi's own default
+		const currentModel =
+			cfg.get<string>("defaultModel", "") || getPiDefaultModel();
 		const workspace =
 			vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "No workspace";
 		const workspaceName =

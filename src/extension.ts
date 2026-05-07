@@ -20,6 +20,7 @@ import {
 } from "./terminal";
 import { ControlViewProvider, type FileStatus } from "./views/controlView";
 import { SessionTracker } from "./sessions";
+import { ModelsViewProvider } from "./views/modelsView";
 import { PackagesViewProvider } from "./views/packagesView";
 import { SessionsViewProvider } from "./views/sessionsView";
 
@@ -28,6 +29,7 @@ let statusBarItem: vscode.StatusBarItem | undefined;
 let controlView: ControlViewProvider | undefined;
 let sessionsView: SessionsViewProvider | undefined;
 let packagesView: PackagesViewProvider | undefined;
+let modelsView: ModelsViewProvider | undefined;
 let sessionTracker: SessionTracker | undefined;
 
 export async function activate(
@@ -46,6 +48,10 @@ export async function activate(
 	controlView = new ControlViewProvider(context, bridge);
 	sessionsView = new SessionsViewProvider(context, bridge, sessionTracker);
 	packagesView = new PackagesViewProvider(context, bridge);
+	modelsView = new ModelsViewProvider(context, async (model) => {
+		if (controlView) await controlView.applyModel(model);
+		modelsView?.notifyCurrentModel(model);
+	});
 
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(
@@ -59,6 +65,10 @@ export async function activate(
 		vscode.window.registerWebviewViewProvider(
 			PackagesViewProvider.viewType,
 			packagesView,
+		),
+		vscode.window.registerWebviewViewProvider(
+			ModelsViewProvider.viewType,
+			modelsView,
 		),
 	);
 
@@ -190,7 +200,11 @@ export async function activate(
 				await (controlView as any).applyModel(model);
 			} else {
 				const cfg = vscode.workspace.getConfiguration("piSidebar");
-				await cfg.update("defaultModel", model, vscode.ConfigurationTarget.Global);
+				await cfg.update(
+					"defaultModel",
+					model,
+					vscode.ConfigurationTarget.Global,
+				);
 				await restartPiTerminal(bridge, context.extensionUri);
 			}
 		}),
@@ -212,7 +226,10 @@ export async function activate(
 	// ── Terminal close listener ──────────────────────────────────────────────
 	context.subscriptions.push(
 		vscode.window.onDidCloseTerminal((terminal) => {
-			if (terminal.name === "Pi Agent" || terminal.name.startsWith("Pi Agent")) {
+			if (
+				terminal.name === "Pi Agent" ||
+				terminal.name.startsWith("Pi Agent")
+			) {
 				controlView?.notifyTerminalState(false);
 				sessionTracker?.onClose(terminal);
 			}
@@ -227,7 +244,8 @@ export async function activate(
 			return;
 		}
 		const diag = vscode.languages.getDiagnostics(editor.document.uri);
-		let errors = 0; let warnings = 0;
+		let errors = 0;
+		let warnings = 0;
 		for (const d of diag) {
 			if (d.severity === vscode.DiagnosticSeverity.Error) errors++;
 			else if (d.severity === vscode.DiagnosticSeverity.Warning) warnings++;
@@ -252,18 +270,27 @@ export async function activate(
 	pushFileStatus(); // seed on startup
 
 	// ── Restore sessions from previous VS Code window ──────────────────
-	if (vscode.workspace.getConfiguration("piSidebar").get<boolean>("restoreSessions", true)) {
+	if (
+		vscode.workspace
+			.getConfiguration("piSidebar")
+			.get<boolean>("restoreSessions", true)
+	) {
 		void sessionTracker.restore(bridge, context.extensionUri);
 	}
 
 	// Push active sessions to sessions view whenever they change
 	const refreshActiveSessions = () => {
-		const tracked = sessionTracker?.getSessions().map((s) => s.sessionFile) ?? [];
+		const tracked =
+			sessionTracker?.getSessions().map((s) => s.sessionFile) ?? [];
 		sessionsView?.setActiveSessions(tracked);
 	};
 	context.subscriptions.push(
-		vscode.window.onDidOpenTerminal(() => setTimeout(refreshActiveSessions, 500)),
-		vscode.window.onDidCloseTerminal(() => setTimeout(refreshActiveSessions, 500)),
+		vscode.window.onDidOpenTerminal(() =>
+			setTimeout(refreshActiveSessions, 500),
+		),
+		vscode.window.onDidCloseTerminal(() =>
+			setTimeout(refreshActiveSessions, 500),
+		),
 	);
 
 	// ── Show sidebar on startup if configured ────────────────────────────────

@@ -1,7 +1,7 @@
 import * as crypto from "node:crypto";
 import * as vscode from "vscode";
 import type { Bridge } from "../bridge/server";
-import { PackageManager } from "../packages";
+import { PackageManager, fetchNpmPackages } from "../packages";
 
 export class PackagesViewProvider implements vscode.WebviewViewProvider {
 	static readonly viewType = "piSidebar.packages";
@@ -24,6 +24,13 @@ export class PackagesViewProvider implements vscode.WebviewViewProvider {
 
 		// Seed installed list on open
 		void this.pkgManager.refreshInstalled(post);
+
+		// Fetch packages from npm registry in the extension host and post to webview
+		void fetchNpmPackages((packages) => {
+			post({ type: "packages", packages });
+		}).catch((err: Error) => {
+			post({ type: "packagesError", error: err.message });
+		});
 
 		view.webview.onDidReceiveMessage(
 			async (msg: { type: string; package?: string }) => {
@@ -313,55 +320,20 @@ function renderPackages() {
   }).join('');
 }
 
-async function fetchPackages() {
-  try {
-    const res = await fetch('https://registry.npmjs.org/-/v1/search?text=keywords:pi-package&size=250');
-    const data = await res.json();
-    allPackages = (data.objects || []).map(o => ({
-      name: o.package.name,
-      description: o.package.description || '',
-      version: o.package.version || '',
-      author: o.package.publisher?.username || o.package.author?.name || '',
-      keywords: (o.package.keywords || []).join(' '),
-      npm: o.package.links?.npm || 'https://www.npmjs.com/package/' + o.package.name,
-      repo: o.package.links?.repository || '',
-      piLabels: [],
-      image: '',
-      video: '',
-    }));
-    renderPackages();
-
-    // Enrich with pi section metadata in batches of 10
-    const chunks = [];
-    for (let i = 0; i < allPackages.length; i += 10) chunks.push(allPackages.slice(i, i + 10));
-    for (const chunk of chunks) {
-      await Promise.all(chunk.map(async (p) => {
-        try {
-          const r = await fetch('https://registry.npmjs.org/' + encodeURIComponent(p.name) + '/latest');
-          const pkg = await r.json();
-          if (pkg?.pi && typeof pkg.pi === 'object') {
-            const pi = pkg.pi;
-            const labels = [];
-            if (pi.extensions?.length) labels.push('extensions');
-            if (pi.skills?.length) labels.push('skills');
-            if (pi.prompts?.length) labels.push('prompts');
-            if (pi.themes?.length) labels.push('themes');
-            p.piLabels = labels;
-            if (pi.image) p.image = pi.image;
-            if (pi.video) p.video = pi.video;
-          }
-        } catch {}
-      }));
-      renderPackages(); // re-render after each enrichment batch
-    }
-  } catch (e) {
-    document.getElementById('pkgList').innerHTML =
-      '<div class="status">Failed to load packages.<br>' + esc(String(e)) + '</div>';
-  }
-}
 
 window.addEventListener('message', e => {
   const msg = e.data;
+  if (msg.type === 'packages') {
+    // Data fetched by extension host (Node.js), no sandbox restrictions
+    allPackages = msg.packages || [];
+    renderPackages();
+    return;
+  }
+  if (msg.type === 'packagesError') {
+    document.getElementById('pkgList').innerHTML =
+      '<div class="status">Failed to load packages.<br>' + esc(msg.error || 'Unknown error') + '</div>';
+    return;
+  }
   if (msg.type === 'installed') {
     installedSet = new Set(msg.packages || []);
     renderInstalled();
@@ -381,7 +353,6 @@ window.addEventListener('message', e => {
   }
 });
 
-fetchPackages();
 </script>
 </body>
 </html>`;
