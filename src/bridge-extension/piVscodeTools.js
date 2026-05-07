@@ -159,14 +159,130 @@ function startFooterPolling(pi) {
 // ── Model switch polling ─────────────────────────────────────────────────────
 
 let _modelPollInterval = null;
+let _latestModelContext = null;
+
+const THINKING_LEVELS = new Set([
+	"off",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+]);
+
+function canonicalModelRef(model) {
+	if (!model) return "";
+	return `${model.provider}/${model.id}`;
+}
+
+function splitThinkingSuffix(modelRef) {
+	const idx = modelRef.lastIndexOf(":");
+	if (idx <= 0) return { modelRef, thinkingLevel: undefined };
+	const suffix = modelRef.slice(idx + 1);
+	if (!THINKING_LEVELS.has(suffix))
+		return { modelRef, thinkingLevel: undefined };
+	return { modelRef: modelRef.slice(0, idx), thinkingLevel: suffix };
+}
+
+function describeModel(model, duplicateIds) {
+	const ref = canonicalModelRef(model);
+	const display =
+		model.name && model.name !== model.id
+			? `${model.name} (${model.id})`
+			: model.id;
+	return {
+		value: ref,
+		provider: model.provider,
+		id: model.id,
+		name: model.name,
+		label: duplicateIds.has(model.id)
+			? `${display} — ${model.provider}`
+			: display,
+		description: ref,
+		reasoning: !!model.reasoning,
+		images: Array.isArray(model.input) && model.input.includes("image"),
+	};
+}
+
+async function reportAvailableModels(ctx) {
+	if (!ctx?.modelRegistry) return;
+	try {
+		const models = ctx.modelRegistry.getAvailable?.() || [];
+		const counts = new Map();
+		for (const model of models)
+			counts.set(model.id, (counts.get(model.id) || 0) + 1);
+		const duplicateIds = new Set(
+			[...counts.entries()].filter(([, count]) => count > 1).map(([id]) => id),
+		);
+		await callVsCode("reportAvailableModels", {
+			models: models.map((model) => describeModel(model, duplicateIds)),
+		}).catch(() => {});
+	} catch {
+		// best-effort only
+	}
+}
+
+function rememberModelContext(ctx) {
+	if (ctx?.modelRegistry) {
+		_latestModelContext = ctx;
+		void reportAvailableModels(ctx);
+	}
+}
+
+function resolveRequestedModel(modelRef, ctx) {
+	if (!ctx?.modelRegistry)
+		return { error: "Pi model registry is not ready yet" };
+	const { modelRef: rawRef, thinkingLevel } = splitThinkingSuffix(
+		String(modelRef || "").trim(),
+	);
+	if (!rawRef) return { error: "No model specified" };
+
+	const available = ctx.modelRegistry.getAvailable?.() || [];
+	let matches = [];
+
+	const slash = rawRef.indexOf("/");
+	if (slash > 0) {
+		const provider = rawRef.slice(0, slash);
+		const id = rawRef.slice(slash + 1);
+		const exact = ctx.modelRegistry.find?.(provider, id);
+		if (
+			exact &&
+			available.some((m) => m.provider === exact.provider && m.id === exact.id)
+		) {
+			matches = [exact];
+		}
+	} else {
+		matches = available.filter((m) => m.id === rawRef || m.name === rawRef);
+	}
+
+	if (matches.length === 0) {
+		const needle = rawRef.toLowerCase();
+		matches = available.filter((m) => {
+			const fields = [canonicalModelRef(m), m.id, m.name || ""].map((s) =>
+				String(s).toLowerCase(),
+			);
+			return fields.some((s) => s.includes(needle));
+		});
+	}
+
+	if (matches.length === 1) return { model: matches[0], thinkingLevel };
+	if (matches.length > 1) {
+		const refs = matches.slice(0, 8).map(canonicalModelRef).join(", ");
+		return {
+			error: `Ambiguous model "${rawRef}". Use provider/model, e.g. ${refs}`,
+		};
+	}
+	return { error: `Model not found or not authenticated: ${rawRef}` };
+}
 
 /**
  * Poll getPendingModelSwitch every 2s. When a switch is queued by the
- * sidebar, call pi.setModel(model) in-place, then report the result back.
+ * sidebar, resolve it to a real Model object and call pi.setModel() in-place.
  * No-op if bridge env vars are absent.
  */
 function startModelSwitchPolling(pi, terminalId) {
-	if (!process.env.PI_VSCODE_BRIDGE_URL || !process.env.PI_VSCODE_BRIDGE_TOKEN) return;
+	if (!process.env.PI_VSCODE_BRIDGE_URL || !process.env.PI_VSCODE_BRIDGE_TOKEN)
+		return;
 	if (!terminalId) return;
 	if (_modelPollInterval) return;
 
@@ -176,28 +292,46 @@ function startModelSwitchPolling(pi, terminalId) {
 			const data = typeof raw === "string" ? JSON.parse(raw) : raw;
 			if (!data || !data.model) return;
 
-			const model = data.model;
+			const requested = String(data.model);
+			const resolved = resolveRequestedModel(requested, _latestModelContext);
+			if (resolved.error || !resolved.model) {
+				await callVsCode("reportModelChanged", {
+					terminalId,
+					model: requested,
+					success: false,
+					error: resolved.error || "Unable to resolve model",
+				}).catch(() => {});
+				return;
+			}
+
 			let success = false;
+			let error = "";
 			try {
-				if (typeof pi.setModel === "function") {
-					const result = await pi.setModel(model);
-					success = result !== false;
+				if (typeof pi.setModel !== "function")
+					throw new Error("pi.setModel is unavailable");
+				const result = await pi.setModel(resolved.model);
+				success = result !== false;
+				if (!success)
+					error =
+						"No API key or subscription auth is configured for this model";
+				if (
+					success &&
+					resolved.thinkingLevel &&
+					typeof pi.setThinkingLevel === "function"
+				) {
+					pi.setThinkingLevel(resolved.thinkingLevel);
 				}
-			} catch {
+			} catch (err) {
+				error = err && err.message ? err.message : String(err);
 				success = false;
 			}
 
-			// Report result back to the bridge (triggers onTabUpdated callback)
-			await callVsCode("reportModelChanged", { terminalId, model, success }).catch(() => {});
-
-			// If pi.setModel failed, inject the slash command as a fallback
-			if (!success && typeof pi.sendUserMessage === "function") {
-				try {
-					await pi.sendUserMessage(`/model ${model}`, { deliverAs: "followUp" });
-				} catch {
-					// best-effort
-				}
-			}
+			await callVsCode("reportModelChanged", {
+				terminalId,
+				model: success ? canonicalModelRef(resolved.model) : requested,
+				success,
+				error,
+			}).catch(() => {});
 		} catch {
 			// Bridge unavailable — stop silently
 			clearInterval(_modelPollInterval);
@@ -640,6 +774,11 @@ module.exports = (pi) => {
 		});
 	}
 
+	// ── Live model registry capture/reporting ────────────────────────────────
+	pi.on("session_start", async (_event, ctx) => rememberModelContext(ctx));
+	pi.on("resources_discover", async (_event, ctx) => rememberModelContext(ctx));
+	pi.on("before_agent_start", async (_event, ctx) => rememberModelContext(ctx));
+
 	// ── Model switch polling ─────────────────────────────────────────────────
 	startModelSwitchPolling(pi, terminalId);
 
@@ -648,9 +787,14 @@ module.exports = (pi) => {
 
 	// ── Model selection reverse-sync ─────────────────────────────────────────
 	// When the user types /model in the TUI, notify the sidebar immediately.
-	pi.on("model_select", async (event) => {
+	pi.on("model_select", async (event, ctx) => {
+		rememberModelContext(ctx);
 		if (!terminalId) return;
-		const modelName = event?.model?.id || event?.model?.name || String(event?.model ?? "");
+		const modelName =
+			canonicalModelRef(event?.model) ||
+			event?.model?.id ||
+			event?.model?.name ||
+			String(event?.model ?? "");
 		if (!modelName) return;
 		await callVsCode("reportModelChanged", {
 			terminalId,

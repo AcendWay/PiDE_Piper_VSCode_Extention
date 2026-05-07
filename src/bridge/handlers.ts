@@ -60,15 +60,16 @@ export async function handleBridgeAction(
 			return tid ? (state.tabs.get(tid) ?? null) : null;
 		}
 
-
 		// ── Model switch (pi polls these) ──────────────────────────────────
 		case "setModel": {
 			// Queue an in-place model switch for the pi-side to pick up.
 			// Returns immediately; pi polls getPendingModelSwitch every ~2s.
 			const tid = String(p.terminalId ?? "");
 			const model = String(p.model ?? "");
-			if (!tid || !model) return { ok: false, error: "terminalId and model required" };
-			if (!state.tabs.has(tid)) return { ok: false, error: "unknown terminalId" };
+			if (!tid || !model)
+				return { ok: false, error: "terminalId and model required" };
+			if (!state.tabs.has(tid))
+				return { ok: false, error: "unknown terminalId" };
 			state.pendingModelSwitches.set(tid, model);
 			return { ok: true, queued: true, fallback: null };
 		}
@@ -89,13 +90,23 @@ export async function handleBridgeAction(
 			const tid = String(p.terminalId ?? "");
 			const model = String(p.model ?? "");
 			const success = p.success !== false;
-			const usedFallback = !success;
-			if (tid && model) {
+			const error = String(p.error ?? "");
+			if (tid && model && success) {
 				upsertTab(state, tid, { model });
-				// Pass fallback flag so extension can show the appropriate status bar msg
-				state.onTabUpdated?.(tid, usedFallback);
+				state.onTabUpdated?.(tid, true);
+			} else if (tid && model) {
+				state.onModelSwitchFailed?.(tid, model, error);
 			}
-			return { received: true, success };
+			return { received: true, success, error: error || undefined };
+		}
+
+		case "reportAvailableModels": {
+			const models = Array.isArray(p.models)
+				? (p.models as import("./types").BridgeModelOption[])
+				: [];
+			state.availableModels = models;
+			state.onModelsUpdated?.(models);
+			return { received: true, count: models.length };
 		}
 
 		case "reportAgentState": {
@@ -104,7 +115,10 @@ export async function handleBridgeAction(
 			const agentState = String(p.state ?? "");
 			const since = String(p.since ?? new Date().toISOString());
 			if (tid && agentState) {
-				upsertTab(state, tid, { agentState: agentState as import("../agentTabState").AgentState, since });
+				upsertTab(state, tid, {
+					agentState: agentState as import("../agentTabState").AgentState,
+					since,
+				});
 				state.onTabUpdated?.(tid);
 			}
 			return { received: true };
@@ -123,12 +137,17 @@ export async function handleBridgeAction(
 		case "reportContextBreakdown": {
 			const bdTid = String(p.terminalId ?? "");
 			if (bdTid) {
-				const bd = p.breakdown as import("../agentTabState").ContextBreakdown | undefined;
+				const bd = p.breakdown as
+					| import("../agentTabState").ContextBreakdown
+					| undefined;
 				if (bd) {
 					upsertTab(state, bdTid, { breakdown: bd });
 					// Keep legacy singleton in sync
 					if (bd.totalTokens && bd.contextWindow) {
-						state.contextUsage = { used: bd.totalTokens, total: bd.contextWindow };
+						state.contextUsage = {
+							used: bd.totalTokens,
+							total: bd.contextWindow,
+						};
 					}
 				}
 				state.onTabUpdated?.(bdTid);
@@ -145,7 +164,6 @@ export async function handleBridgeAction(
 			}
 			return { received: true };
 		}
-
 
 		case "reportTerminalSession": {
 			const terminalId = String(p.terminalId ?? "");

@@ -49,7 +49,10 @@ const closeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Tracks idle → clear timers per terminalId. */
 const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Per-terminal state machine snapshots (used for idle timer management). */
-const stateMachineSnapshots = new Map<string, import("./agentStateMachine").StateMachineSnapshot>();
+const stateMachineSnapshots = new Map<
+	string,
+	import("./agentStateMachine").StateMachineSnapshot
+>();
 /** Per-terminal last-reported total token count for token-delta computation. */
 const lastReportedTokens = new Map<string, number>();
 let sessionsView: SessionsViewProvider | undefined;
@@ -69,10 +72,16 @@ export async function activate(
 	// Initialize project cost store + reconcile in background (non-blocking)
 	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 	if (workspaceRoot) {
-		projectCostStore = new ProjectCostStore(context.workspaceState, workspaceRoot);
-		void projectCostStore.reconcileFromSessions().then(() => {
-			controlView?.notifyProjectCost(projectCostStore!.getTotal());
-		}).catch((err) => console.error("Pi: cost reconcile failed", err));
+		projectCostStore = new ProjectCostStore(
+			context.workspaceState,
+			workspaceRoot,
+		);
+		void projectCostStore
+			.reconcileFromSessions()
+			.then(() => {
+				controlView?.notifyProjectCost(projectCostStore!.getTotal());
+			})
+			.catch((err) => console.error("Pi: cost reconcile failed", err));
 	}
 
 	// ── Bridge event listeners (notifications + selection cache) ────────────────
@@ -88,9 +97,9 @@ export async function activate(
 		modelsView?.notifyCurrentModel(model);
 	});
 
-	// ── Bridge onTabUpdated callback ───────────────────────────────────
+	// ── Bridge callbacks ───────────────────────────────────────────────
 	// Fired from bridge handlers when a tab's state changes.
-	bridge.state.onTabUpdated = (terminalId, modelFallback) => {
+	bridge.state.onTabUpdated = (terminalId, modelChanged) => {
 		const tab = bridge!.state.tabs.get(terminalId);
 		if (!tab) return;
 
@@ -110,34 +119,49 @@ export async function activate(
 		// ── Cost increment (Slice #23) ─────────────────────────────────────
 		if (tab.cost?.lastDelta && projectCostStore) {
 			const tokenDelta = tab.breakdown?.totalTokens
-				? Math.max(0, tab.breakdown.totalTokens - (lastReportedTokens.get(terminalId) ?? 0))
+				? Math.max(
+						0,
+						tab.breakdown.totalTokens -
+							(lastReportedTokens.get(terminalId) ?? 0),
+					)
 				: 0;
 			lastReportedTokens.set(terminalId, tab.breakdown?.totalTokens ?? 0);
 			void projectCostStore
 				.increment(tab.cost.lastDelta, tokenDelta)
-				.then(() => controlView?.notifyProjectCost(projectCostStore!.getTotal()))
+				.then(() =>
+					controlView?.notifyProjectCost(projectCostStore!.getTotal()),
+				)
 				.catch((err) => console.error("Pi: cost increment failed", err));
 		}
 
 		// ── Model confirmed ───────────────────────────────────────────────
-		if (tab.model && modelFallback !== undefined) {
+		if (modelChanged && tab.model) {
 			controlView?.notifyModelChanged(tab.model);
+			modelsView?.notifyCurrentModel(tab.model);
 			vscode.workspace
 				.getConfiguration("piSidebar")
 				.update("defaultModel", tab.model, vscode.ConfigurationTarget.Global)
-				.then(undefined, (e) => console.error("Pi: failed to persist model", e));
-			if (modelFallback) {
-				vscode.window.setStatusBarMessage(
-					`$(warning) Pi: model switch fell back to /model ${tab.model}`,
-					4000,
+				.then(undefined, (e) =>
+					console.error("Pi: failed to persist model", e),
 				);
-			} else {
-				vscode.window.setStatusBarMessage(
-					`$(check) Pi model switched to ${tab.model}`,
-					4000,
-				);
-			}
+			vscode.window.setStatusBarMessage(
+				`$(check) Pi model switched to ${tab.model}`,
+				4000,
+			);
 		}
+	};
+
+	bridge.state.onModelsUpdated = (models) => {
+		controlView?.notifyAvailableModelsChanged(models);
+	};
+
+	bridge.state.onModelSwitchFailed = (terminalId, model, error) => {
+		const current = bridge?.state.tabs.get(terminalId)?.model ?? "";
+		if (current) controlView?.notifyModelChanged(current);
+		const suffix = error ? ` — ${error}` : "";
+		vscode.window.showErrorMessage(
+			`Pi: model switch to ${model} failed${suffix}`,
+		);
 	};
 
 	context.subscriptions.push(
@@ -282,7 +306,6 @@ export async function activate(
 			}, 250);
 		}),
 
-
 		vscode.commands.registerCommand("piSidebar.restartSession", async () => {
 			if (!bridge) return;
 
@@ -303,9 +326,7 @@ export async function activate(
 				({ forkPath } = rewindOneTurn(tab.sessionFile));
 			} catch (err) {
 				const msg =
-					err instanceof SessionRewindError
-						? err.message
-						: String(err);
+					err instanceof SessionRewindError ? err.message : String(err);
 				vscode.window.showErrorMessage(`Pi: Rewind failed — ${msg}`);
 				return;
 			}
@@ -386,7 +407,11 @@ export async function activate(
 					bridge.state.pendingModelSwitches.set(currentId, model);
 				} else {
 					const cfg = vscode.workspace.getConfiguration("piSidebar");
-					await cfg.update("defaultModel", model, vscode.ConfigurationTarget.Global);
+					await cfg.update(
+						"defaultModel",
+						model,
+						vscode.ConfigurationTarget.Global,
+					);
 				}
 			}
 		}),
@@ -402,17 +427,22 @@ export async function activate(
 		),
 
 		vscode.commands.registerCommand("piSidebar.refreshProjectCost", () => {
-			if (projectCostStore) controlView?.notifyProjectCost(projectCostStore.getTotal());
+			if (projectCostStore)
+				controlView?.notifyProjectCost(projectCostStore.getTotal());
 		}),
 
 		vscode.commands.registerCommand("piSidebar.showCostHistory", async () => {
 			if (!projectCostStore) {
-				vscode.window.showInformationMessage("Pi: No workspace open — cost history unavailable.");
+				vscode.window.showInformationMessage(
+					"Pi: No workspace open — cost history unavailable.",
+				);
 				return;
 			}
 			const sessions = projectCostStore.listRecentSessions();
 			if (!sessions.length) {
-				vscode.window.showInformationMessage("Pi: No sessions found for this workspace.");
+				vscode.window.showInformationMessage(
+					"Pi: No sessions found for this workspace.",
+				);
 				return;
 			}
 			const items: vscode.QuickPickItem[] = sessions.map((s) => ({
@@ -590,7 +620,9 @@ export async function activate(
 
 	// ── OSC 2 tab title setting check (one-time per workspace) ──────────────
 	{
-		const tabsSettings = vscode.workspace.getConfiguration("terminal.integrated.tabs");
+		const tabsSettings = vscode.workspace.getConfiguration(
+			"terminal.integrated.tabs",
+		);
 		const currentTitle = tabsSettings.get<string>("title", "");
 		if (!currentTitle.includes("${sequence}")) {
 			try {
@@ -604,7 +636,10 @@ export async function activate(
 					false,
 				);
 				if (!notified) {
-					await context.workspaceState.update("piSidebar.oscTitleNotified", true);
+					await context.workspaceState.update(
+						"piSidebar.oscTitleNotified",
+						true,
+					);
 					vscode.window.showInformationMessage(
 						"Pi enabled live tab titles in VS Code’s terminal panel — undo via Settings → Terminal › Integrated › Tabs: Title.",
 					);
@@ -703,21 +738,24 @@ function applyAgentStateMachine(
 			1,
 			Math.min(120, cfg.get<number>("idleStaleMinutes", 10)),
 		);
-		const timer = setTimeout(() => {
-			idleTimers.delete(terminalId);
-			const current = stateMachineSnapshots.get(terminalId);
-			if (!current || current.state !== "idle") return; // state changed
-			const cleared = transition(current, "idleTimerExpired");
-			stateMachineSnapshots.set(terminalId, cleared);
-			// Update bridge tab state to "clear"
-			if (bridge) {
-				upsertTab(bridge.state, terminalId, { agentState: "clear" });
-				controlView?.notifyTabsChanged(
-					bridge.state.tabs.toArray(),
-					bridge.state.currentTerminalId,
-				);
-			}
-		}, minutes * 60 * 1000);
+		const timer = setTimeout(
+			() => {
+				idleTimers.delete(terminalId);
+				const current = stateMachineSnapshots.get(terminalId);
+				if (!current || current.state !== "idle") return; // state changed
+				const cleared = transition(current, "idleTimerExpired");
+				stateMachineSnapshots.set(terminalId, cleared);
+				// Update bridge tab state to "clear"
+				if (bridge) {
+					upsertTab(bridge.state, terminalId, { agentState: "clear" });
+					controlView?.notifyTabsChanged(
+						bridge.state.tabs.toArray(),
+						bridge.state.currentTerminalId,
+					);
+				}
+			},
+			minutes * 60 * 1000,
+		);
 		idleTimers.set(terminalId, timer);
 	}
 }

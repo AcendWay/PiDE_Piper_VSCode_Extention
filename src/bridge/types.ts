@@ -46,6 +46,19 @@ export interface BridgeResponse {
 	error?: string;
 }
 
+/** Model option reported by the live pi session. */
+export interface BridgeModelOption {
+	/** Canonical selector value, e.g. "openai/gpt-5.5". */
+	value: string;
+	provider: string;
+	id: string;
+	name?: string;
+	label: string;
+	description?: string;
+	reasoning?: boolean;
+	images?: boolean;
+}
+
 /** Serialised diagnostic entry returned by getContext / getDiagnostics. */
 export interface DiagnosticEntry {
 	file: string;

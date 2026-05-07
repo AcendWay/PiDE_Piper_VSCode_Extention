@@ -11,6 +11,7 @@ import { findPiBinary } from "../pi";
 interface ModelEntry {
 	provider: string;
 	id: string;
+	value: string;
 	context: string;
 	maxOut: string;
 	thinking: boolean;
@@ -29,6 +30,7 @@ function parseListModelsOutput(raw: string): ModelEntry[] {
 		entries.push({
 			provider: cols[0],
 			id: cols[1],
+			value: `${cols[0]}/${cols[1]}`,
 			context: cols[2],
 			maxOut: cols[3],
 			thinking: cols[4] === "yes",
@@ -340,7 +342,7 @@ function render() {
   for (const [provider, models] of Object.entries(groups)) {
     html += '<div class="provider-header">' + esc(provider) + ' (' + models.length + ')</div>';
     for (const m of models) {
-      const isActive = m.id === currentModel || (provider + '/' + m.id) === currentModel;
+      const isActive = m.id === currentModel || m.value === currentModel;
       const cls = 'model-row' + (isActive ? ' active' : '');
       const label = isActive ? '✓ Active' : 'Use';
       const badges = [
@@ -352,7 +354,7 @@ function render() {
         '<div class="model-id" title="' + esc(m.id) + '">' + esc(m.id) + '</div>' +
         '<div class="meta">' + esc(m.context) + '</div>' +
         (badges ? '<div class="badges">' + badges + '</div>' : '') +
-        '<button class="use-btn" data-action="selectModel" data-model="' + esc(m.id) + '">' + label + '</button>' +
+        '<button class="use-btn" data-action="selectModel" data-model="' + esc(m.value) + '">' + label + '</button>' +
       '</div>';
     }
   }

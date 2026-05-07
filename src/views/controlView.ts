@@ -4,11 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { Bridge } from "../bridge/server";
-import {
-	createPiTerminal,
-	findPiTerminal,
-	focusOrCreateTerminal,
-} from "../terminal";
+import type { BridgeModelOption } from "../bridge/types";
+import { findPiTerminal, focusOrCreateTerminal } from "../terminal";
 
 // ── Model lists ───────────────────────────────────────────────────────────────
 
@@ -67,24 +64,30 @@ async function addRecentModel(
 	);
 }
 
+type ModelListItem = { value: string; label: string; group: string };
+
 function buildModelList(
 	context: vscode.ExtensionContext,
 	current: string,
-): { value: string; label: string; group: string }[] {
+	liveModels: BridgeModelOption[] = [],
+): ModelListItem[] {
 	const recent = getRecentModels(context);
-	const piModels = getPiEnabledModels();
 	const seen = new Set<string>();
-	const items: { value: string; label: string; group: string }[] = [];
+	const items: ModelListItem[] = [];
 
-	const add = (value: string, group: string) => {
+	const add = (value: string, group: string, label = value) => {
 		if (seen.has(value)) return;
 		seen.add(value);
-		items.push({ value, label: value, group });
+		items.push({ value, label, group });
 	};
 
 	if (current) add(current, "current");
 	for (const m of recent) add(m, "recent");
-	for (const m of piModels) add(m, "pi-config");
+	if (liveModels.length) {
+		for (const m of liveModels) add(m.value, "pi-live", m.label);
+	} else {
+		for (const m of getPiEnabledModels()) add(m, "pi-config");
+	}
 
 	return items;
 }
@@ -97,11 +100,6 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 	private view?: vscode.WebviewView;
 	private terminalRunning = false;
 	private contextPollTimer?: ReturnType<typeof setInterval>;
-	/** Current list of tabs for the mini-strip. */
-	private tabs: import("../agentTabState").AgentTabState[] = [];
-	/** terminalId of the currently-active tab. */
-	private currentTerminalId: string | null = null;
-
 	constructor(
 		private readonly context: vscode.ExtensionContext,
 		private readonly bridge: Bridge,
@@ -143,8 +141,6 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 		tabs: import("../agentTabState").AgentTabState[],
 		currentTerminalId: string | null,
 	): void {
-		this.tabs = tabs;
-		this.currentTerminalId = currentTerminalId;
 		const current = currentTerminalId
 			? tabs.find((t) => t.terminalId === currentTerminalId)
 			: undefined;
@@ -177,6 +173,16 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 
 	notifyModelChanged(model: string): void {
 		this.post({ type: "modelChanged", model });
+	}
+
+	notifyAvailableModelsChanged(models: BridgeModelOption[]): void {
+		const cfg = vscode.workspace.getConfiguration("piSidebar");
+		const current = cfg.get<string>("defaultModel", "") || getPiDefaultModel();
+		this.post({
+			type: "availableModelsChanged",
+			models: buildModelList(this.context, current, models),
+			current,
+		});
 	}
 
 	// ── Context usage polling ────────────────────────────────────────────────
@@ -215,7 +221,10 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 				break;
 			case "focusTab": {
 				// Delegate to extension which holds the terminalMap
-				await vscode.commands.executeCommand("piSidebar.focusTab", msg.terminalId);
+				await vscode.commands.executeCommand(
+					"piSidebar.focusTab",
+					msg.terminalId,
+				);
 				break;
 			}
 			case "open":
@@ -260,6 +269,7 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 					this.bridge.state.tabs.toArray(),
 					this.bridge.state.currentTerminalId,
 				);
+				this.notifyAvailableModelsChanged(this.bridge.state.availableModels);
 				// Ask extension to push project cost (via command)
 				void vscode.commands.executeCommand("piSidebar.refreshProjectCost");
 				break;
@@ -287,20 +297,25 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 				4000,
 			);
 		} else if (findPiTerminal()) {
-			// Terminal exists but isn’t yet tracked (e.g. pre-activation terminal)
-			// Fall back to text injection
-			const t = findPiTerminal();
-			if (t) t.sendText(`/model ${model}`, true);
+			// Terminal exists but is not tracked by the bridge yet. Do not inject
+			// "/model" as terminal text; outside the TUI editor it becomes a prompt.
 			const cfg = vscode.workspace.getConfiguration("piSidebar");
-			await cfg.update("defaultModel", model, vscode.ConfigurationTarget.Global);
-			vscode.window.setStatusBarMessage(
-				`$(check) Pi model set to ${model}`,
-				4000,
+			await cfg.update(
+				"defaultModel",
+				model,
+				vscode.ConfigurationTarget.Global,
+			);
+			vscode.window.showWarningMessage(
+				`Pi: live terminal is not ready for API model switching. ${model} will be used on next Pi start.`,
 			);
 		} else {
 			// No terminal — persist preference only, do not spawn
 			const cfg = vscode.workspace.getConfiguration("piSidebar");
-			await cfg.update("defaultModel", model, vscode.ConfigurationTarget.Global);
+			await cfg.update(
+				"defaultModel",
+				model,
+				vscode.ConfigurationTarget.Global,
+			);
 			vscode.window.setStatusBarMessage(
 				`$(check) Pi will use ${model} on next start`,
 				4000,
@@ -312,7 +327,11 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 	buildQuickPickModels(): string[] {
 		const cfg = vscode.workspace.getConfiguration("piSidebar");
 		const current = cfg.get<string>("defaultModel", "");
-		return buildModelList(this.context, current).map((m) => m.value);
+		return buildModelList(
+			this.context,
+			current,
+			this.bridge.state.availableModels,
+		).map((m) => m.value);
 	}
 
 	private post(message: unknown): void {
@@ -332,7 +351,11 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 		const workspaceName =
 			vscode.workspace.workspaceFolders?.[0]?.name ?? "No workspace";
 
-		const models = buildModelList(this.context, currentModel);
+		const models = buildModelList(
+			this.context,
+			currentModel,
+			this.bridge.state.availableModels,
+		);
 		const topModels = models.slice(0, 5);
 		const moreModels = models.slice(5);
 
@@ -920,6 +943,26 @@ function updateModel(model) {
   }
 }
 
+function setModelOptions(models, current) {
+  const topGroup = document.getElementById('topGroup');
+  const moreGroup = document.getElementById('moreGroup');
+  if (!topGroup || !moreGroup || !Array.isArray(models)) return;
+  topGroup.innerHTML = '';
+  moreGroup.innerHTML = '';
+  const top = models.slice(0, 5);
+  const more = models.slice(5);
+  const append = (parent, m) => {
+    const opt = document.createElement('option');
+    opt.value = m.value;
+    opt.textContent = m.label || m.value;
+    if (m.value === current) opt.selected = true;
+    parent.appendChild(opt);
+  };
+  top.forEach(m => append(topGroup, m));
+  more.forEach(m => append(moreGroup, m));
+  if (current) updateModel(current);
+}
+
 function esc(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -958,6 +1001,7 @@ window.addEventListener('message', e => {
     case 'breakdown':     updateBreakdown(msg.breakdown, msg.cost); break;
     case 'fileStatus':    updateFileRow(msg.status); break;
     case 'modelChanged':  updateModel(msg.model); break;
+    case 'availableModelsChanged': setModelOptions(msg.models, msg.current); break;
     case 'tabsChanged':
       renderTabStrip(msg.tabs, msg.currentTerminalId);
       // Repaint context bar against current tab's breakdown

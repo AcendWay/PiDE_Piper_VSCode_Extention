@@ -1,5 +1,5 @@
 import { AgentTabStateMap } from "../agentTabState";
-import type { BridgeEvent, SelectionInfo } from "./types";
+import type { BridgeEvent, BridgeModelOption, SelectionInfo } from "./types";
 
 const MAX_NOTIFICATIONS = 50;
 
@@ -21,9 +21,22 @@ export interface BridgeState {
 	/**
 	 * Callback fired whenever a tab's state is updated by a bridge action.
 	 * Registered by extension.ts to push live updates to the webview.
-	 * The second param is true when the model switch used the fallback (/model cmd).
+	 * The second param is true only when the active model was confirmed changed.
 	 */
-	onTabUpdated?: (terminalId: string, modelFallback?: boolean) => void;
+	onTabUpdated?: (terminalId: string, modelChanged?: boolean) => void;
+
+	/** Callback fired when pi reports its live available model list. */
+	onModelsUpdated?: (models: BridgeModelOption[]) => void;
+
+	/** Callback fired when an in-place model switch fails. */
+	onModelSwitchFailed?: (
+		terminalId: string,
+		model: string,
+		error: string,
+	) => void;
+
+	/** Live model list reported by the pi-side extension. Values are canonical provider/model IDs. */
+	availableModels: BridgeModelOption[];
 
 	/**
 	 * Legacy singleton context usage — kept for backwards compat with pi-side
@@ -52,6 +65,7 @@ export function createBridgeState(
 		tabs: new AgentTabStateMap(),
 		currentTerminalId: null,
 		pendingModelSwitches: new Map(),
+		availableModels: [],
 		contextUsage: null,
 		latestSelection: null,
 		notifications: [],
