@@ -202,6 +202,12 @@
           "minimum": 1,
           "maximum": 120,
           "description": "Minutes of inactivity after which a Pi Agent session transitions from idle (yellow) to stale/clear (gray) in the tab strip."
+        },
+        "piSidebar.tabColorPalette": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["terminal.ansiCyan","terminal.ansiMagenta","terminal.ansiYellow","terminal.ansiBlue","terminal.ansiGreenBright","terminal.ansiRedBright"],
+          "description": "VS Code theme color IDs cycled for Pi Agent tabs 2, 3, 4... Tab 1 always uses the default terminal color."
         }
       }
     }

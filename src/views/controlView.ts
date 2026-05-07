@@ -208,9 +208,8 @@ export class ControlViewProvider implements vscode.WebviewViewProvider {
 			case "reviewDiffs":
 				await vscode.commands.executeCommand("piSidebar.reviewDiffs");
 				break;
-			case "newSession":
-				await createPiTerminal(this.bridge, this.context.extensionUri);
-				this.notifyTerminalState(true);
+			case "newTab":
+				await vscode.commands.executeCommand("piSidebar.newTab");
 				break;
 			case "ready": {
 				// Webview reloaded — push current state
@@ -616,7 +615,8 @@ button.action:disabled { opacity: 0.38; cursor: default; }
       ${this.terminalRunning ? "" : "disabled"}>📎 Send Context</button>
     <button class="action" id="diffBtn" data-action="reviewDiffs"
       ${this.terminalRunning ? "" : "disabled"}>⎇ Review Diffs</button>
-    <button class="action" id="newBtn" data-action="newSession">✦ New Session</button>
+    <button class="action" id="newBtn" data-action="newTab"
+      title="Open another Pi terminal alongside this one. Optional label distinguishes tabs at a glance.">✦ New Pi Tab</button>
     <button class="action" id="restartBtn" data-action="restart"
       ${this.terminalRunning ? "" : "disabled"}>↺ Restart</button>
   </div>

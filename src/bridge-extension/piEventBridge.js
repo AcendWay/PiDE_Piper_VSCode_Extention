@@ -70,6 +70,17 @@ function startEventBridge(callVsCode, pi, terminalId) {
 		}, 5_000);
 	});
 
+
+	// ── Title tracking ────────────────────────────────────────────────────
+	let _firstUserMessage = null; // captured from first turn_start
+	let _titleSet = false;        // whether OSC 2 has been emitted yet
+
+	pi.on("turn_start", (event) => {
+		if (!_firstUserMessage && event && event.prompt) {
+			_firstUserMessage = String(event.prompt).slice(0, 30).replace(/\n/g, " ");
+		}
+	});
+
 	// ── IDLE: turn completed ───────────────────────────────────────────────
 	pi.on("turn_end", () => {
 		_pendingToolCalls = 0;
@@ -78,6 +89,17 @@ function startEventBridge(callVsCode, pi, terminalId) {
 			_confirmTimer = null;
 		}
 		report("idle");
+
+		// After the first turn, emit an OSC 2 title derived from the first user message.
+		// Only fires once per session (user-supplied label takes precedence if set).
+		if (!_titleSet && _firstUserMessage) {
+			_titleSet = true;
+			const label = "Pi Agent \u00b7 " + _firstUserMessage;
+			// Write OSC 2 escape sequence — VS Code updates the terminal tab title
+			process.stdout.write("\x1b]2;" + label + "\x07");
+			// Mirror to bridge so the mini-tab-strip stays in sync
+			callVsCode("reportTerminalTitle", { terminalId, title: label }).catch(() => {});
+		}
 	});
 
 	// ── IDLE: agent session ended ──────────────────────────────────────────

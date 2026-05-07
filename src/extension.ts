@@ -1,6 +1,7 @@
 import * as crypto from "node:crypto";
 import * as vscode from "vscode";
 import { transition, INITIAL_SNAPSHOT } from "./agentStateMachine";
+import { buildTabName, DEFAULT_PALETTE } from "./tabPalette";
 import type { AgentEvent } from "./agentStateMachine";
 import { upsertTab } from "./bridge/state";
 import { createBridge } from "./bridge/server";
@@ -256,10 +257,41 @@ export async function activate(
 		}),
 
 		vscode.commands.registerCommand("piSidebar.newSession", async () => {
+			// Legacy alias — delegate to newTab
+			await vscode.commands.executeCommand("piSidebar.newTab");
+		}),
+
+		vscode.commands.registerCommand("piSidebar.newTab", async () => {
 			if (!bridge) return;
-			// Force a brand-new terminal with no session file
-			const newRes = await createPiTerminal(bridge, context.extensionUri);
-			if (newRes) registerPiTerminal(newRes.terminal, newRes.terminalId);
+			// Ask for an optional label
+			const label = await vscode.window.showInputBox({
+				prompt: "Tab label (optional)",
+				placeHolder: "e.g. refactor auth",
+				title: "New Pi Tab",
+				ignoreFocusOut: false,
+			});
+			// undefined = user cancelled; empty string = skipped label
+			if (label === undefined) return; // cancelled
+
+			const colorIndex = bridge.state.tabs.size; // 0-based insertion index
+			const cfg3 = vscode.workspace.getConfiguration("piSidebar");
+			const palette = cfg3.get<string[]>("tabColorPalette", DEFAULT_PALETTE);
+			const tabName = buildTabName(label || undefined, colorIndex);
+
+			const newRes = await createPiTerminal(bridge, context.extensionUri, {
+				label: label || undefined,
+				colorIndex,
+			});
+			if (newRes) {
+				registerPiTerminal(newRes.terminal, newRes.terminalId);
+				// Seed the tab title in bridge state immediately
+				upsertTab(bridge.state, newRes.terminalId, { title: tabName });
+				controlView?.notifyTabsChanged(
+					bridge.state.tabs.toArray(),
+					bridge.state.currentTerminalId,
+				);
+			}
+			void palette; // suppress unused warning until tabPalette is used
 		}),
 
 		vscode.commands.registerCommand("piSidebar.selectModel", async () => {
@@ -442,6 +474,33 @@ export async function activate(
 			setTimeout(refreshActiveSessions, 500),
 		),
 	);
+
+	// ── OSC 2 tab title setting check (one-time per workspace) ──────────────
+	{
+		const tabsSettings = vscode.workspace.getConfiguration("terminal.integrated.tabs");
+		const currentTitle = tabsSettings.get<string>("title", "");
+		if (!currentTitle.includes("${sequence}")) {
+			try {
+				await tabsSettings.update(
+					"title",
+					"${sequence}${separator}${localWorkspaceFolder}",
+					vscode.ConfigurationTarget.Workspace,
+				);
+				const notified = context.workspaceState.get<boolean>(
+					"piSidebar.oscTitleNotified",
+					false,
+				);
+				if (!notified) {
+					await context.workspaceState.update("piSidebar.oscTitleNotified", true);
+					vscode.window.showInformationMessage(
+						"Pi enabled live tab titles in VS Code’s terminal panel — undo via Settings → Terminal › Integrated › Tabs: Title.",
+					);
+				}
+			} catch {
+				// Setting may be locked (e.g. remote workspace) — skip silently
+			}
+		}
+	}
 
 	// ── Show sidebar on startup if configured ────────────────────────────────
 	const cfg = vscode.workspace.getConfiguration("piSidebar");

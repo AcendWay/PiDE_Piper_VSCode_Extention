@@ -8,6 +8,7 @@ import {
 	IS_WIN,
 	winToWslPath,
 } from "./pi";
+import { tabPalette, buildTabName, DEFAULT_PALETTE } from "./tabPalette";
 
 export const TERMINAL_NAME = "Pi Agent";
 
@@ -70,6 +71,10 @@ export async function focusOrCreateTerminal(
 		extraArgs?: string[];
 		contextLines?: string[];
 		terminalId?: string;
+		/** User-supplied label for the tab title (e.g. "refactor auth"). */
+		label?: string;
+		/** 0-based insertion index — drives tab color palette selection. */
+		colorIndex?: number;
 	} = {},
 ): Promise<{ terminal: vscode.Terminal; terminalId: string } | undefined> {
 	// Reuse existing Pi terminal if one is running and no specific session/model requested
@@ -96,6 +101,10 @@ export async function createPiTerminal(
 		extraArgs?: string[];
 		contextLines?: string[];
 		terminalId?: string;
+		/** User-supplied label for the tab title (e.g. "refactor auth"). */
+		label?: string;
+		/** 0-based insertion index — drives tab color palette selection. */
+		colorIndex?: number;
 	} = {},
 ): Promise<{ terminal: vscode.Terminal; terminalId: string } | undefined> {
 	const piPath = await ensurePiBinary();
@@ -158,8 +167,14 @@ export async function createPiTerminal(
 		cfg.get<string>("terminalLocation", "beside"),
 	);
 
-	const terminal = vscode.window.createTerminal({
-		name: TERMINAL_NAME,
+	const tabIndex = options.colorIndex ?? 0;
+	const tabName = buildTabName(options.label, tabIndex);
+	const cfg2 = vscode.workspace.getConfiguration("piSidebar");
+	const palette = cfg2.get<string[]>("tabColorPalette", DEFAULT_PALETTE);
+	const tabColor = tabPalette(tabIndex, palette);
+
+	const createOptions: vscode.TerminalOptions = {
+		name: tabName,
 		shellPath,
 		shellArgs,
 		cwd,
@@ -170,7 +185,11 @@ export async function createPiTerminal(
 			light: vscode.Uri.joinPath(extensionUri, "media", "pi-logo-light.svg"),
 			dark: vscode.Uri.joinPath(extensionUri, "media", "pi-logo-dark.svg"),
 		},
-	});
+	};
+	// Apply palette color for tabs 2+ (tabPalette returns undefined for index 0)
+	if (tabColor) (createOptions as { color?: vscode.ThemeColor }).color = tabColor;
+
+	const terminal = vscode.window.createTerminal(createOptions);
 
 	terminal.show(true);
 	return { terminal, terminalId };

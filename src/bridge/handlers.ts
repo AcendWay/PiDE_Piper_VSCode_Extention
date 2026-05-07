@@ -110,6 +110,17 @@ export async function handleBridgeAction(
 			return { received: true };
 		}
 		// ── Session reporting ─────────────────────────────────────────────
+		case "reportTerminalTitle": {
+			// Pi-side mirrors the OSC 2 write so the strip stays in sync
+			const titleTid = String(p.terminalId ?? "");
+			const title = String(p.title ?? "");
+			if (titleTid && title) {
+				upsertTab(state, titleTid, { title });
+				state.onTabUpdated?.(titleTid);
+			}
+			return { received: true };
+		}
+
 		case "reportTerminalSession": {
 			const terminalId = String(p.terminalId ?? "");
 			const sessionFile = String(p.sessionFile ?? "");
