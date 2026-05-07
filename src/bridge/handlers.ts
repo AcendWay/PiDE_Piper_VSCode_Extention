@@ -97,6 +97,18 @@ export async function handleBridgeAction(
 			}
 			return { received: true, success };
 		}
+
+		case "reportAgentState": {
+			// Called by pi-side event bridge with state: working|idle|attention|clear
+			const tid = String(p.terminalId ?? "");
+			const agentState = String(p.state ?? "");
+			const since = String(p.since ?? new Date().toISOString());
+			if (tid && agentState) {
+				upsertTab(state, tid, { agentState: agentState as import("../agentTabState").AgentState, since });
+				state.onTabUpdated?.(tid);
+			}
+			return { received: true };
+		}
 		// ── Session reporting ─────────────────────────────────────────────
 		case "reportTerminalSession": {
 			const terminalId = String(p.terminalId ?? "");

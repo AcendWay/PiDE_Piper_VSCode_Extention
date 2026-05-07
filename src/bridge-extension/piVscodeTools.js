@@ -14,6 +14,7 @@
 const http = require("node:http");
 const https = require("node:https");
 const { Type } = require("typebox");
+const { startEventBridge } = require("./piEventBridge");
 
 // ── HTTP bridge call ─────────────────────────────────────────────────────────
 
@@ -641,6 +642,9 @@ module.exports = (pi) => {
 
 	// ── Model switch polling ─────────────────────────────────────────────────
 	startModelSwitchPolling(pi, terminalId);
+
+	// ── Agent lifecycle event bridge ─────────────────────────────────────────
+	startEventBridge(callVsCode, pi, terminalId);
 
 	// ── Model selection reverse-sync ─────────────────────────────────────────
 	// When the user types /model in the TUI, notify the sidebar immediately.

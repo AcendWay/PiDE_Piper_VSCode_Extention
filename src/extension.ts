@@ -1,5 +1,8 @@
 import * as crypto from "node:crypto";
 import * as vscode from "vscode";
+import { transition, INITIAL_SNAPSHOT } from "./agentStateMachine";
+import type { AgentEvent } from "./agentStateMachine";
+import { upsertTab } from "./bridge/state";
 import { createBridge } from "./bridge/server";
 import { registerBridgeListeners } from "./bridge/listeners";
 import type { Bridge } from "./bridge/server";
@@ -39,6 +42,10 @@ const terminalMap = new Map<string, vscode.Terminal>();
 const terminalIdMap = new WeakMap<vscode.Terminal, string>();
 /** Tracks pending grace-period timers for tab cleanup after terminal close. */
 const closeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Tracks idle → clear timers per terminalId. */
+const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Per-terminal state machine snapshots (used for idle timer management). */
+const stateMachineSnapshots = new Map<string, import("./agentStateMachine").StateMachineSnapshot>();
 let sessionsView: SessionsViewProvider | undefined;
 let packagesView: PackagesViewProvider | undefined;
 let modelsView: ModelsViewProvider | undefined;
@@ -67,24 +74,32 @@ export async function activate(
 	});
 
 	// ── Bridge onTabUpdated callback ───────────────────────────────────
-	// Fired from bridge handlers when a tab's state changes (e.g. model confirmed).
+	// Fired from bridge handlers when a tab's state changes.
 	bridge.state.onTabUpdated = (terminalId, modelFallback) => {
 		const tab = bridge!.state.tabs.get(terminalId);
 		if (!tab) return;
+
+		// ── Idle timer management ─────────────────────────────────────────
+		// Apply the state machine transition for the new agent state,
+		// managing idle → clear timers based on the result.
+		if (tab.agentState) {
+			applyAgentStateMachine(terminalId, tab.agentState);
+		}
+
 		// Push updated tab list to the webview
 		controlView?.notifyTabsChanged(
 			bridge!.state.tabs.toArray(),
 			bridge!.state.currentTerminalId,
 		);
-		// If model changed, persist setting and update dropdown
-		if (tab.model) {
+
+		// ── Model confirmed ───────────────────────────────────────────────
+		if (tab.model && modelFallback !== undefined) {
 			controlView?.notifyModelChanged(tab.model);
 			vscode.workspace
 				.getConfiguration("piSidebar")
 				.update("defaultModel", tab.model, vscode.ConfigurationTarget.Global)
 				.then(undefined, (e) => console.error("Pi: failed to persist model", e));
 			if (modelFallback) {
-				// pi.setModel failed — fell back to /model slash command
 				vscode.window.setStatusBarMessage(
 					`$(warning) Pi: model switch fell back to /model ${tab.model}`,
 					4000,
@@ -469,6 +484,65 @@ export function getActivePiTerminal(): vscode.Terminal | undefined {
 	return findPiTerminal();
 }
 
+/**
+ * Apply an incoming agent state to the state machine snapshot for this terminal.
+ * Manages idle → clear timers. Called from onTabUpdated.
+ */
+function applyAgentStateMachine(
+	terminalId: string,
+	reportedState: string,
+): void {
+	if (!bridge) return;
+
+	// Map the reported raw state to a machine event
+	const eventMap: Record<string, AgentEvent> = {
+		working: "agentStart",
+		idle: "turnEnd",
+		attention: "toolCallNeedsConfirm",
+		clear: "terminalSpawned",
+	};
+	const event = eventMap[reportedState];
+	if (!event) return;
+
+	const prev = stateMachineSnapshots.get(terminalId) ?? INITIAL_SNAPSHOT;
+	const next = transition(prev, event);
+	stateMachineSnapshots.set(terminalId, next);
+
+	// Cancel idle timer when entering working state
+	if (next.state === "working") {
+		const existing = idleTimers.get(terminalId);
+		if (existing) {
+			clearTimeout(existing);
+			idleTimers.delete(terminalId);
+		}
+	}
+
+	// Start idle timer when entering idle state
+	if (next.state === "idle" && prev.state !== "idle") {
+		const cfg = vscode.workspace.getConfiguration("piSidebar");
+		const minutes = Math.max(
+			1,
+			Math.min(120, cfg.get<number>("idleStaleMinutes", 10)),
+		);
+		const timer = setTimeout(() => {
+			idleTimers.delete(terminalId);
+			const current = stateMachineSnapshots.get(terminalId);
+			if (!current || current.state !== "idle") return; // state changed
+			const cleared = transition(current, "idleTimerExpired");
+			stateMachineSnapshots.set(terminalId, cleared);
+			// Update bridge tab state to "clear"
+			if (bridge) {
+				upsertTab(bridge.state, terminalId, { agentState: "clear" });
+				controlView?.notifyTabsChanged(
+					bridge.state.tabs.toArray(),
+					bridge.state.currentTerminalId,
+				);
+			}
+		}, minutes * 60 * 1000);
+		idleTimers.set(terminalId, timer);
+	}
+}
+
 /** Returns true if the terminal is a Pi Agent terminal. */
 function isPiTerminal(terminal: vscode.Terminal): boolean {
 	return (
@@ -505,9 +579,9 @@ function upsertTabInExtension(
 	_terminal: vscode.Terminal,
 ): void {
 	if (!bridge) return;
-	const { upsertTab } =
-		require("./bridge/state") as typeof import("./bridge/state");
 	upsertTab(bridge.state, terminalId, { agentState: "clear" });
+	// Seed the state machine snapshot so idle-timer logic has a baseline
+	stateMachineSnapshots.set(terminalId, INITIAL_SNAPSHOT);
 	controlView?.notifyTabsChanged(
 		bridge.state.tabs.toArray(),
 		bridge.state.currentTerminalId,

@@ -195,6 +195,13 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically launch a Pi Agent terminal when the extension activates if no Pi terminal is running."
+        },
+        "piSidebar.idleStaleMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 120,
+          "description": "Minutes of inactivity after which a Pi Agent session transitions from idle (yellow) to stale/clear (gray) in the tab strip."
         }
       }
     }
