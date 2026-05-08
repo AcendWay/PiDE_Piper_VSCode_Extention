@@ -4,7 +4,7 @@
 
 # PiDE Piper — Pi Agent for VS Code
 
-**Your AI coding agent, deeply wired into the editor.**
+**Pi in your editor. No cosplay. No rewrites. Just power.**
 
 [![Version](https://img.shields.io/badge/version-0.3.3-6366f1?style=flat-square&logo=visualstudiocode)](https://github.com/AcendWay/PiDE_Piper_VSCode_Extention/releases)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.92+-007ACC?style=flat-square&logo=visualstudiocode)](https://code.visualstudio.com)
@@ -17,27 +17,33 @@
 
 ---
 
-## 🧠 What is PiDE Piper?
+## Why this exists
 
-[Pi](https://github.com/earendil-works/pi) is a terminal-native AI coding agent built for serious developers — a full TUI experience with tools, sessions, packages, and multi-model support baked in. It's fast, extensible, and runs exactly where you want it: in your terminal.
+Pi’s core promise (from [pi.dev](https://pi.dev/)) is simple: **adapt the agent to your workflow, not the other way around**.
 
-**PiDE Piper** is the VS Code layer that makes pi feel at home in your editor. Not a reimplementation. Not a chat widget. This extension wires pi's existing binary directly into VS Code as a **native terminal tab**, then adds a purpose-built sidebar for everything you'd otherwise do by hand.
+PiDE Piper applies that same philosophy to VS Code.
 
-> **PiDE Piper does not replace pi.** It amplifies it. Your configured providers, models, skills, extensions, and session history all carry over automatically — because we just run the `pi` binary you already have.
+- We **don’t** rebuild Pi in a webview.
+- We **don’t** hide the terminal behind a fake chat UI.
+- We **do** run your real `pi` binary in a native VS Code terminal and give it a serious control plane.
 
-### What we're building together
+> If you already invested in Pi models, skills, prompts, extensions, and session history, PiDE Piper keeps all of it intact.
 
-We're building the best open-source AI coding agent integration for VS Code. The kind where:
+---
 
-- 🔍 Pi _always_ knows what file you're in, where your cursor is, and what errors exist
-- ⚡ You can run **multiple Pi agents in parallel** and see exactly which ones are working, waiting, or asking for input
-- 💬 Model switching happens _in-place_ — no terminal restart, no lost conversation
-- 📊 The context window shows you a **segmented breakdown** of what's consuming tokens and what it's costing
-- 💾 Your **project-lifetime spend** is tracked and survives restarts
-- 🔁 A bad response is one click to rewind — non-destructively, with the original preserved
-- 🎨 Every Pi tab gets a distinct color and self-describes as it works
+## What it feels like
 
-This is open source and evolving fast. Contributions, ideas, and bug reports are very welcome.
+You’re coding. You open Pi. It already knows your file, cursor, and diagnostics.
+
+You spin up multiple agent tabs:
+
+- one writes code,
+- one reviews diffs,
+- one hunts flaky tests.
+
+You see live status dots, switch models in-place, track context/cost in real time, and rewind a bad turn without nuking the session.
+
+That’s the product: **terminal-native Pi speed + editor-native orchestration.**
 
 ---
 
