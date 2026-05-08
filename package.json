@@ -1,7 +1,7 @@
 {
   "name": "pi-vscode-sidebar",
-  "displayName": "Pi Sidebar",
-  "description": "Run the Pi coding agent as a native VS Code terminal with sidebar management: model selector, context indicator, session history, and package marketplace.",
+  "displayName": "PiDE Piper",
+  "description": "PiDE Piper wires the Pi AI coding agent into VS Code as a native terminal with a full sidebar: multi-tab agent management, live model switching, segmented context window bar, project-lifetime cost tracking, session history, package marketplace, 25+ LSP bridge tools, and drag-and-drop file/image context.",
   "version": "0.3.3",
   "private": false,
   "publisher": "local",
@@ -21,7 +21,20 @@
     "vscode": "^1.92.0"
   },
   "categories": [
+    "AI",
     "Other"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "pi",
+    "pide piper",
+    "coding agent",
+    "llm",
+    "claude",
+    "gemini",
+    "terminal",
+    "sidebar"
   ],
   "activationEvents": [
     "onStartupFinished"
