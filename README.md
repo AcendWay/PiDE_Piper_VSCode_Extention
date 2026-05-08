@@ -399,7 +399,7 @@ Inspired by [pithings/pi-vscode](https://github.com/pithings/pi-vscode) and [cde
 
 <img src="media/PiDE_Piper_Logo.png" width="48" height="48" alt="PiDE Piper" />
 
-**PiDE Piper** · [PiEDPiPER.dev](https://PiEDPiPER.dev) · Open source · MIT License
+**PiDE Piper** · [PiDEPiper.dev](https://PiDEPiper.dev) · Open source · MIT License
 
 _If you find this useful, ⭐ the repo and tell a friend._
 
